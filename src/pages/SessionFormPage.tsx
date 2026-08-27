@@ -143,55 +143,62 @@ export default function SessionFormPage({ store, mode }: Props) {
           ))}
         </datalist>
 
-        {rows.map((row) => (
+        {rows.map((row, idx) => (
           <div className="set-row" key={row.key}>
-            <input
-              type="text"
-              placeholder="種目名 (例: ベンチプレス)"
-              value={row.exerciseName}
-              list="exercise-names"
-              onChange={(e) => updateRow(row.key, { exerciseName: e.target.value })}
-              required
-            />
-            <input
-              type="number"
-              step="0.5"
-              min={0}
-              placeholder="重量kg"
-              value={row.weightKg}
-              onChange={(e) => updateRow(row.key, { weightKg: Number(e.target.value) })}
-            />
-            <input
-              type="number"
-              min={1}
-              placeholder="回数"
-              value={row.reps}
-              onChange={(e) => updateRow(row.key, { reps: Number(e.target.value) })}
-            />
-            <button
-              type="button"
-              className="set-row-remove"
-              title="このセットをコピー"
-              onClick={() => duplicateRow(row.key)}
-            >
-              ⧉
-            </button>
+            <div className="set-row-top">
+              <span className="set-index">{idx + 1}</span>
+              <input
+                type="text"
+                className="set-exercise-input"
+                placeholder="種目名 (例: ベンチプレス)"
+                value={row.exerciseName}
+                list="exercise-names"
+                onChange={(e) => updateRow(row.key, { exerciseName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="set-row-bottom">
+              <input
+                type="number"
+                step="0.5"
+                min={0}
+                placeholder="重量"
+                value={row.weightKg}
+                onChange={(e) => updateRow(row.key, { weightKg: Number(e.target.value) })}
+              />
+              <span className="unit">kg</span>
+              <input
+                type="number"
+                min={1}
+                placeholder="回数"
+                value={row.reps}
+                onChange={(e) => updateRow(row.key, { reps: Number(e.target.value) })}
+              />
+              <span className="unit">回</span>
+              <button
+                type="button"
+                className="set-row-icon-btn"
+                title="このセットをコピー"
+                onClick={() => duplicateRow(row.key)}
+              >
+                ⧉
+              </button>
+              {rows.length > 1 && (
+                <button
+                  type="button"
+                  className="set-row-icon-btn set-row-icon-btn-danger"
+                  title="このセットを削除"
+                  onClick={() => removeRow(row.key)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
         ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button type="button" className="btn" onClick={addRow}>
-            + セットを追加
-          </button>
-          {rows.length > 1 && (
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={() => removeRow(rows[rows.length - 1].key)}
-            >
-              最後のセットを削除
-            </button>
-          )}
-        </div>
+        <button type="button" className="btn" style={{ marginTop: 4 }} onClick={addRow}>
+          + セットを追加
+        </button>
       </div>
 
       <div className="card">
