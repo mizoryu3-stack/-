@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { calculateSimulation } from "@/lib/simulation";
+import { computeDefaultSimulation } from "@/lib/propertySimulation";
+import type { SimulationResult } from "@/lib/simulation";
 import { buildingTypeLabel, formatYen } from "@/lib/format";
 import ScoreBadge from "@/components/ScoreBadge";
 
@@ -10,24 +11,13 @@ export default async function FavoritesPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const rows = favorites
-    .filter((f) => f.property.simulationInput)
-    .map((f) => {
-      const property = f.property;
-      const sim = property.simulationInput!;
-      const result = calculateSimulation({
-        rent: property.rent,
-        managementFee: property.managementFee,
-        nightlyPrice: sim.nightlyPrice,
-        occupancyRate: sim.occupancyRate,
-        utilityCost: sim.utilityCost,
-        cleaningCost: sim.cleaningCost,
-        suppliesCost: sim.suppliesCost,
-        otherCost: sim.otherCost,
-      });
-      return { property, result };
-    })
-    .sort((a, b) => b.result.profit - a.result.profit);
+  type FavoriteProperty = (typeof favorites)[number]["property"];
+  const rows: { property: FavoriteProperty; result: SimulationResult }[] = [];
+  for (const f of favorites) {
+    const result = computeDefaultSimulation(f.property);
+    if (result) rows.push({ property: f.property, result });
+  }
+  rows.sort((a, b) => b.result.monthlyProfit - a.result.monthlyProfit);
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,7 +36,7 @@ export default async function FavoritesPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3">物件名</th>
@@ -56,6 +46,7 @@ export default async function FavoritesPage() {
                 <th className="px-4 py-3">民泊適性スコア</th>
                 <th className="px-4 py-3">想定月間売上</th>
                 <th className="px-4 py-3">想定利益/月</th>
+                <th className="px-4 py-3">想定利益/年</th>
               </tr>
             </thead>
             <tbody>
@@ -66,7 +57,7 @@ export default async function FavoritesPage() {
                       {property.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{property.area}</td>
+                  <td className="px-4 py-3 text-slate-600">{property.city}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {buildingTypeLabel[property.buildingType]}
                   </td>
@@ -76,10 +67,16 @@ export default async function FavoritesPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{formatYen(result.monthlySales)}</td>
                   <td
-                    className={`px-4 py-3 font-bold ${result.profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}
+                    className={`px-4 py-3 font-bold ${result.monthlyProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}
                   >
-                    {result.profit >= 0 ? "+" : ""}
-                    {formatYen(result.profit)}
+                    {result.monthlyProfit >= 0 ? "+" : ""}
+                    {formatYen(result.monthlyProfit)}
+                  </td>
+                  <td
+                    className={`px-4 py-3 font-bold ${result.annualProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}
+                  >
+                    {result.annualProfit >= 0 ? "+" : ""}
+                    {formatYen(result.annualProfit)}
                   </td>
                 </tr>
               ))}

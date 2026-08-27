@@ -2,17 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { calculateSimulation } from "@/lib/simulation";
-import { formatYen } from "@/lib/format";
+import { formatPaybackPeriod, formatPercent, formatYen } from "@/lib/format";
 
 interface Props {
-  rent: number;
   managementFee: number;
+  initialRent: number;
   initialNightlyPrice: number;
   initialOccupancyRate: number; // 0.0 - 1.0
   initialUtilityCost: number;
   initialCleaningCost: number;
   initialSuppliesCost: number;
+  initialOtaFeeRate: number; // 0.0 - 1.0
   initialOtherCost: number;
+  initialCost: number | null;
 }
 
 function NumberField({
@@ -21,12 +23,16 @@ function NumberField({
   onChange,
   suffix,
   step = 1000,
+  min,
+  max,
 }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
   suffix?: string;
   step?: number;
+  min?: number;
+  max?: number;
 }) {
   return (
     <label className="flex flex-col gap-1">
@@ -35,6 +41,8 @@ function NumberField({
         <input
           type="number"
           step={step}
+          min={min}
+          max={max}
           value={Number.isFinite(value) ? value : 0}
           onChange={(e) => onChange(Number(e.target.value))}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
@@ -46,15 +54,18 @@ function NumberField({
 }
 
 export default function SimulationPanel({
-  rent,
   managementFee,
+  initialRent,
   initialNightlyPrice,
   initialOccupancyRate,
   initialUtilityCost,
   initialCleaningCost,
   initialSuppliesCost,
+  initialOtaFeeRate,
   initialOtherCost,
+  initialCost,
 }: Props) {
+  const [rent, setRent] = useState(initialRent);
   const [nightlyPrice, setNightlyPrice] = useState(initialNightlyPrice);
   const [occupancyPercent, setOccupancyPercent] = useState(
     Math.round(initialOccupancyRate * 100),
@@ -62,6 +73,7 @@ export default function SimulationPanel({
   const [utilityCost, setUtilityCost] = useState(initialUtilityCost);
   const [cleaningCost, setCleaningCost] = useState(initialCleaningCost);
   const [suppliesCost, setSuppliesCost] = useState(initialSuppliesCost);
+  const [otaFeePercent, setOtaFeePercent] = useState(Math.round(initialOtaFeeRate * 100));
   const [otherCost, setOtherCost] = useState(initialOtherCost);
 
   const result = useMemo(
@@ -74,9 +86,22 @@ export default function SimulationPanel({
         utilityCost,
         cleaningCost,
         suppliesCost,
+        otaFeeRate: otaFeePercent / 100,
         otherCost,
+        initialCost,
       }),
-    [rent, managementFee, nightlyPrice, occupancyPercent, utilityCost, cleaningCost, suppliesCost, otherCost],
+    [
+      rent,
+      managementFee,
+      nightlyPrice,
+      occupancyPercent,
+      utilityCost,
+      cleaningCost,
+      suppliesCost,
+      otaFeePercent,
+      otherCost,
+      initialCost,
+    ],
   );
 
   return (
@@ -87,6 +112,7 @@ export default function SimulationPanel({
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <NumberField label="家賃" value={rent} onChange={setRent} suffix="円/月" />
         <NumberField
           label="想定宿泊単価"
           value={nightlyPrice}
@@ -94,21 +120,24 @@ export default function SimulationPanel({
           suffix="円/泊"
           step={500}
         />
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-slate-600">想定稼働率</span>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={5}
-              value={occupancyPercent}
-              onChange={(e) => setOccupancyPercent(Number(e.target.value))}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-            <span className="text-sm text-slate-400">%</span>
-          </div>
-        </label>
+        <NumberField
+          label="想定稼働率"
+          value={occupancyPercent}
+          onChange={setOccupancyPercent}
+          suffix="%"
+          step={5}
+          min={0}
+          max={100}
+        />
+        <NumberField
+          label="OTA手数料率"
+          value={otaFeePercent}
+          onChange={setOtaFeePercent}
+          suffix="%"
+          step={1}
+          min={0}
+          max={100}
+        />
         <NumberField label="水道光熱費" value={utilityCost} onChange={setUtilityCost} suffix="円/月" />
         <NumberField label="清掃費" value={cleaningCost} onChange={setCleaningCost} suffix="円/月" />
         <NumberField label="消耗品費" value={suppliesCost} onChange={setSuppliesCost} suffix="円/月" />
@@ -122,8 +151,8 @@ export default function SimulationPanel({
             <dd className="font-semibold text-slate-800">{result.monthlyNights}日</dd>
           </div>
           <div>
-            <dt className="text-slate-400">家賃</dt>
-            <dd className="font-semibold text-slate-800">{formatYen(rent)}</dd>
+            <dt className="text-slate-400">OTA手数料</dt>
+            <dd className="font-semibold text-slate-800">{formatYen(result.otaFee)}</dd>
           </div>
           <div>
             <dt className="text-slate-400">月間経費合計</dt>
@@ -135,15 +164,50 @@ export default function SimulationPanel({
           </div>
         </dl>
 
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <p className="text-sm text-slate-500">想定利益（月額）</p>
-          <p
-            className={`text-3xl font-extrabold ${result.profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}
-          >
-            {result.profit >= 0 ? "+" : ""}
-            {formatYen(result.profit)}
-            <span className="ml-1 text-base font-medium text-slate-400">/月</span>
-          </p>
+        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2">
+          <div>
+            <p className="text-sm text-slate-500">想定利益（月額）</p>
+            <p
+              className={`text-3xl font-extrabold ${result.monthlyProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}
+            >
+              {result.monthlyProfit >= 0 ? "+" : ""}
+              {formatYen(result.monthlyProfit)}
+              <span className="ml-1 text-base font-medium text-slate-400">/月</span>
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-500">想定利益（年額）</p>
+            <p
+              className={`text-3xl font-extrabold ${result.annualProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}
+            >
+              {result.annualProfit >= 0 ? "+" : ""}
+              {formatYen(result.annualProfit)}
+              <span className="ml-1 text-base font-medium text-slate-400">/年</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 text-sm">
+          <div>
+            <dt className="text-slate-400">初期費用</dt>
+            <dd className="font-semibold text-slate-800">
+              {initialCost ? formatYen(initialCost) : "未登録"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-400">想定利回り（年間）</dt>
+            <dd className="font-semibold text-slate-800">
+              {result.yieldRate === null ? "-" : formatPercent(result.yieldRate, 1)}
+            </dd>
+          </div>
+          <div className="col-span-2">
+            <dt className="text-slate-400">投資回収期間</dt>
+            <dd className="font-semibold text-slate-800">
+              {result.paybackMonths === null
+                ? "算出不可（初期費用未登録、または赤字のため）"
+                : formatPaybackPeriod(result.paybackMonths)}
+            </dd>
+          </div>
         </div>
       </div>
     </div>

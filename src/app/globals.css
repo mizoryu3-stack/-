@@ -24,3 +24,12 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@layer components {
+  .input-base {
+    @apply w-full rounded-md border border-slate-300 px-3 py-2 text-sm;
+  }
+  .select-input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm;
+  }
+}

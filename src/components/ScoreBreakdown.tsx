@@ -1,24 +1,25 @@
 import type { ScoreBreakdownItem } from "@/lib/score";
+import { MINPAKU_SCORE_DISCLAIMER } from "@/lib/regions";
 
 export default function ScoreBreakdown({ breakdown }: { breakdown: ScoreBreakdownItem[] }) {
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-3 space-y-3">
       {breakdown.map((item) => (
-        <div key={item.label} className="flex items-center gap-3 text-xs">
-          <span className="w-24 shrink-0 text-slate-500">{item.label}</span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-slate-500"
-              style={{ width: `${item.score}%` }}
-            />
+        <div key={item.label} className="text-xs">
+          <div className="flex items-center gap-3">
+            <span className="w-24 shrink-0 font-medium text-slate-600">{item.label}</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-slate-500" style={{ width: `${item.score}%` }} />
+            </div>
+            <span className="w-20 shrink-0 text-right text-slate-500">
+              {Math.round(item.score)}点 (重み{Math.round(item.weight * 100)}%)
+            </span>
           </div>
-          <span className="w-16 shrink-0 text-right text-slate-500">
-            {Math.round(item.score)}点 (重み{Math.round(item.weight * 100)}%)
-          </span>
+          <p className="mt-1 pl-[6.5rem] text-slate-500">{item.reason}</p>
         </div>
       ))}
-      <p className="pt-1 text-[11px] text-slate-400">
-        ※現時点では家賃・専有面積・駅距離・駐車場・建物種別・築年数のみで算出した仮スコアです。
+      <p className="rounded-md bg-amber-50 p-2 text-[11px] leading-relaxed text-amber-800">
+        ⚠️ {MINPAKU_SCORE_DISCLAIMER}
       </p>
     </div>
   );

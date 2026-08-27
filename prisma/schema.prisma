@@ -15,11 +15,18 @@ enum BuildingType {
   APARTMENT // マンション
 }
 
+// 物件データ本体。
+//
+// アプリのデータフローは
+//   外部物件データ → データ取得レイヤー(src/lib/ingestion) → Property(DB) → 民泊分析(src/lib/score.ts) → 検索画面
+// という構成になっており、source* 系のフィールドはそのうち「どこから来たデータか」を記録するためのもの。
+// 現時点では手入力・ダミーデータ(source = "manual")のみで、SUUMO 等からの自動取得は行っていない。
 model Property {
   id             Int          @id @default(autoincrement())
   name           String // 物件名
-  area           String // エリア（例: 渋谷区、大阪市中央区）
-  address        String // 住所
+  prefecture     String // 都道府県（例: 広島県）。現時点では広島県のみ対応（src/lib/regions.ts参照）
+  city           String // 市区町村（例: 広島市中区）。src/lib/regions.ts の対応エリアのいずれか
+  address        String // 住所（表示用の完全な住所文字列）
   buildingType   BuildingType // 戸建て / マンション
   rent           Int // 家賃（円/月）
   managementFee  Int          @default(0) // 管理費（円/月）
@@ -31,35 +38,66 @@ model Property {
   hasParking     Boolean      @default(false) // 駐車場の有無
   deposit        Int          @default(0) // 敷金（円）
   keyMoney       Int          @default(0) // 礼金（円）
-  initialCost    Int? // 初期費用（円、任意）
-  photoUrl       String? // 物件写真URL
+  initialCost    Int? // 初期費用（円、任意。敷金礼金込みの想定初期投資額）
+  photoUrl       String? // 物件写真URL（未設定の場合はプレースホルダー表示）
   memo           String? // メモ
 
-  // 民泊適性スコア（0-100）。現時点は簡易ロジックで算出し保存しておく。
-  // 将来、周辺観光地・競合民泊・規制情報などを加味して再計算できるよう
-  // src/lib/score.ts にロジックを分離してある。
+  // --- データ出所（外部データ取込レイヤー用。STEP5） ---
+  source    String    @default("manual") // "manual" | "suumo" | "homes" | "athome" など。将来のソース追加はアダプタを増やすだけでよい
+  sourceId  String? // 外部サイト側の物件ID（重複取込防止のキー。手入力データはnull）
+  sourceUrl String? // 元データのURL（任意）
+  fetchedAt DateTime? // 外部取得日時（手入力データはnull）
+
+  // 民泊適性スコア（0-100）。src/lib/score.ts の仮ロジックで算出し、取込時点の値をキャッシュしている。
+  // 「参考スコア」であり、法的な民泊可否を確定するものではない。
   minpakuScore Int
 
-  simulationInput SimulationInput?
-  favorite        Favorite?
+  simulationInput   SimulationInput?
+  favorite          Favorite?
+  nearbyAttractions NearbyAttraction[]
+  competitors       CompetitorListing[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // 同一ソース内での重複取込を防止（手入力データは sourceId が null のため対象外）
+  @@unique([source, sourceId])
+}
+
+// 周辺観光地（民泊適性スコアの「観光地の近さ」要素、および詳細画面の表示に使用）
+// 現時点では手入力のサンプル値。将来的にGoogle Maps等のPlaces APIから自動補完することを想定。
+model NearbyAttraction {
+  id         Int      @id @default(autoincrement())
+  propertyId Int
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String // 観光地名（例: 宮島・嚴島神社）
+  distanceKm Float // 物件からの概算距離（km）
+}
+
+// 周辺の競合民泊（民泊適性スコアの「競合の少なさ」要素に使用）
+// 現時点では手入力のサンプル件数。将来的には周辺の民泊掲載サイトの件数取得等を想定。
+model CompetitorListing {
+  id         Int      @id @default(autoincrement())
+  propertyId Int
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  platform   String? // 掲載プラットフォーム名（例: Airbnb）任意
+  distanceKm Float // 物件からの概算距離（km）
 }
 
 // 収益シミュレーションの「初期値・保存された編集値」
 // 実際の売上/利益はUI側で都度計算する（保存はしない）
 model SimulationInput {
-  id             Int      @id @default(autoincrement())
-  propertyId     Int      @unique
-  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  nightlyPrice   Int // 想定宿泊単価（円/泊）
-  occupancyRate  Float // 想定稼働率（0.0〜1.0）
-  utilityCost    Int // 水道光熱費（円/月）
-  cleaningCost   Int // 清掃費（円/月）
-  suppliesCost   Int // 消耗品費（円/月）
-  otherCost      Int // その他経費（円/月）
-  updatedAt      DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  propertyId    Int      @unique
+  property      Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  nightlyPrice  Int // 想定宿泊単価（円/泊）
+  occupancyRate Float // 想定稼働率（0.0〜1.0）
+  utilityCost   Int // 水道光熱費（円/月）
+  cleaningCost  Int // 清掃費（円/月）
+  suppliesCost  Int // 消耗品費（円/月）
+  otaFeeRate    Float    @default(0.15) // OTA(Airbnb等)手数料率（0.0〜1.0、売上に対する割合）
+  otherCost     Int // その他経費（円/月）
+  updatedAt     DateTime @updatedAt
 }
 
 // お気に入り（プロトタイプにつきユーザー識別なしの単一ユーザー想定）

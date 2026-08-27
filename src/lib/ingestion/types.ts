@@ -1,0 +1,105 @@
+import type { BuildingTypeForScore } from "@/lib/score";
+
+/**
+ * 外部物件データを取り込むための正規化済みデータ形式。
+ *
+ * どのデータソース（手入力・将来のSUUMO/HOME'S/アットホーム等のアダプタ）から来た
+ * データであっても、必ずこの形式に変換してから ingestProperty() に渡す。
+ * これにより DB・スコアリング・検索画面はデータソースの違いを一切意識しなくてよい。
+ *
+ *   物件データ(外部サイト等) → データ取得レイヤー(このファイル + ingestProperty.ts) → DB → 民泊分析 → 検索画面
+ */
+export interface RawListingInput {
+  name: string;
+  prefecture: string;
+  city: string;
+  address: string;
+  buildingType: BuildingTypeForScore;
+  rent: number;
+  managementFee?: number;
+  layout: string;
+  areaSqm: number;
+  builtYear: number;
+  stationName?: string;
+  stationWalkMin: number;
+  hasParking: boolean;
+  deposit?: number;
+  keyMoney?: number;
+  initialCost?: number;
+  photoUrl?: string;
+  memo?: string;
+
+  /** データソース識別子。"manual" | "suumo" | "homes" | "athome" など */
+  source: string;
+  /** ソース側の物件ID（重複取込防止キー）。手入力データは省略可 */
+  sourceId?: string;
+  sourceUrl?: string;
+  /** 外部取得日時。手入力データは省略可（ingestProperty側でnull扱い） */
+  fetchedAt?: Date;
+
+  /** 収益シミュレーションの初期値（省略時はrentから簡易推定） */
+  simulation?: {
+    nightlyPrice?: number;
+    occupancyRate?: number;
+    utilityCost?: number;
+    cleaningCost?: number;
+    suppliesCost?: number;
+    otaFeeRate?: number;
+    otherCost?: number;
+  };
+
+  /** 周辺観光地（民泊分析・スコアリングに使用） */
+  nearbyAttractions?: { name: string; distanceKm: number }[];
+  /** 周辺競合民泊（民泊分析・スコアリングに使用） */
+  competitors?: { platform?: string; distanceKm: number }[];
+}
+
+export interface ValidationError {
+  field: string;
+  message: string;
+}
+
+const VALID_BUILDING_TYPES: BuildingTypeForScore[] = ["HOUSE", "APARTMENT"];
+
+/**
+ * RawListingInput の最低限のバリデーション。
+ * 外部API(src/app/api/properties/ingest)経由で受け取ったJSONもここを必ず通す。
+ */
+export function validateRawListing(input: unknown): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (typeof input !== "object" || input === null) {
+    return [{ field: "root", message: "オブジェクトである必要があります" }];
+  }
+  const r = input as Record<string, unknown>;
+
+  const requiredStrings: (keyof RawListingInput)[] = [
+    "name",
+    "prefecture",
+    "city",
+    "address",
+    "layout",
+    "source",
+  ];
+  for (const field of requiredStrings) {
+    if (typeof r[field] !== "string" || (r[field] as string).trim() === "") {
+      errors.push({ field, message: "必須の文字列フィールドです" });
+    }
+  }
+
+  if (!VALID_BUILDING_TYPES.includes(r.buildingType as BuildingTypeForScore)) {
+    errors.push({ field: "buildingType", message: "HOUSE または APARTMENT である必要があります" });
+  }
+
+  const requiredNumbers: (keyof RawListingInput)[] = ["rent", "areaSqm", "builtYear", "stationWalkMin"];
+  for (const field of requiredNumbers) {
+    if (typeof r[field] !== "number" || Number.isNaN(r[field])) {
+      errors.push({ field, message: "必須の数値フィールドです" });
+    }
+  }
+
+  if (typeof r.hasParking !== "boolean") {
+    errors.push({ field: "hasParking", message: "真偽値である必要があります" });
+  }
+
+  return errors;
+}
