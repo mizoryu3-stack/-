@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum BuildingType {
+  HOUSE // 戸建て
+  APARTMENT // マンション
+}
+
+model Property {
+  id             Int          @id @default(autoincrement())
+  name           String // 物件名
+  area           String // エリア（例: 渋谷区、大阪市中央区）
+  address        String // 住所
+  buildingType   BuildingType // 戸建て / マンション
+  rent           Int // 家賃（円/月）
+  managementFee  Int          @default(0) // 管理費（円/月）
+  layout         String // 間取り（例: 1LDK）
+  areaSqm        Float // 専有面積（m2）
+  builtYear      Int // 築年（西暦）
+  stationName    String? // 最寄り駅名
+  stationWalkMin Int // 駅徒歩（分）
+  hasParking     Boolean      @default(false) // 駐車場の有無
+  deposit        Int          @default(0) // 敷金（円）
+  keyMoney       Int          @default(0) // 礼金（円）
+  initialCost    Int? // 初期費用（円、任意）
+  photoUrl       String? // 物件写真URL
+  memo           String? // メモ
+
+  // 民泊適性スコア（0-100）。現時点は簡易ロジックで算出し保存しておく。
+  // 将来、周辺観光地・競合民泊・規制情報などを加味して再計算できるよう
+  // src/lib/score.ts にロジックを分離してある。
+  minpakuScore Int
+
+  simulationInput SimulationInput?
+  favorite        Favorite?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 収益シミュレーションの「初期値・保存された編集値」
+// 実際の売上/利益はUI側で都度計算する（保存はしない）
+model SimulationInput {
+  id             Int      @id @default(autoincrement())
+  propertyId     Int      @unique
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  nightlyPrice   Int // 想定宿泊単価（円/泊）
+  occupancyRate  Float // 想定稼働率（0.0〜1.0）
+  utilityCost    Int // 水道光熱費（円/月）
+  cleaningCost   Int // 清掃費（円/月）
+  suppliesCost   Int // 消耗品費（円/月）
+  otherCost      Int // その他経費（円/月）
+  updatedAt      DateTime @updatedAt
+}
+
+// お気に入り（プロトタイプにつきユーザー識別なしの単一ユーザー想定）
+model Favorite {
+  id         Int      @id @default(autoincrement())
+  propertyId Int      @unique
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
