@@ -242,6 +242,14 @@ model SearchRun {
   errorCount   Int @default(0) // バリデーション/取込に失敗した行数
   matchCount   Int @default(0) // 生成されたPropertyMatch（通知）件数
 
+  // STEP3: DailySearchSchedule.timezone基準の「実行対象日」("YYYY-MM-DD")。
+  // runScheduledDailySearch()（スケジュール実行時のみ）が設定し、手動実行・テスト等では
+  // null のまま。SQLiteのUNIQUE制約はNULL同士を区別する（=NULLは何個あっても衝突しない）ため、
+  // 「スケジュール実行は同じ日に1回まで」だけをDBレベルで強制でき、手動実行は制約を受けない。
+  // 同時に複数リクエストが来ても、後から来た方はこのINSERTがUNIQUE制約違反で失敗するため、
+  // 二重実行がアプリケーションコードの判定だけに頼らず確実に防げる。
+  scheduledFor String? @unique
+
   sources SearchRunSource[]
 }
 

@@ -1,0 +1,43 @@
+name: Daily search cron
+
+# STEP3: 外部スケジューラの候補実装。
+#
+# このアプリのデプロイ先はまだ確定していないため（vercel.json 等の設定ファイルが
+# リポジトリに存在しない）、特定のホスティング先を前提にせず、どこにデプロイしても
+# 使えるGitHub Actionsのscheduled workflowとして用意している。
+# 課金や外部サービスの契約は一切行っていない（GitHub Actionsの無料枠の範囲で動作する）。
+#
+# 動作: schedule（cron式）で5分おきに /api/cron/daily-search を叩くだけ。
+# 「今が DailySearchSchedule に設定された時刻かどうか」の判定はアプリ側
+# （src/lib/ingestion/runScheduledDailySearch.ts）が行うため、このワークフローは
+# 単純に一定間隔で叩き続けるだけでよい（叩くたびに実行されるわけではない）。
+#
+# 有効化する場合、リポジトリの Settings > Secrets and variables > Actions で
+# 以下を設定してから、on.schedule のコメントアウトを外すこと:
+#   - APP_URL: デプロイ先のベースURL（例: https://your-app.vercel.app）
+#   - CRON_API_TOKEN: .env の CRON_API_TOKEN と同じ値
+#
+# 注意: GitHub Actionsのscheduled workflowは公式に「5分未満の間隔は設定不可」であり、
+# 実際の発火はサーバー負荷状況によりさらに遅延することがある（数分〜まれにそれ以上）。
+# 「指定時刻ちょうど」の実行を厳密に保証するものではなく、あくまで「その時刻を含む
+# 数分の間に実行される」運用になる。より厳密な精度が必要な場合はVercel Cron(Pro以上)等、
+# 分単位の精度を保証するスケジューラの利用を検討すること。
+on:
+  # workflow_dispatch: 手動実行用（動作確認に使う）。schedule設定前でもこれだけは使える。
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: "*/5 * * * *"
+
+jobs:
+  trigger-daily-search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/daily-search
+        run: |
+          if [ -z "${{ secrets.APP_URL }}" ] || [ -z "${{ secrets.CRON_API_TOKEN }}" ]; then
+            echo "APP_URL または CRON_API_TOKEN のsecretsが未設定です。リポジトリのSettingsで設定してください。"
+            exit 1
+          fi
+          curl -sS -f -X GET \
+            -H "x-cron-token: ${{ secrets.CRON_API_TOKEN }}" \
+            "${{ secrets.APP_URL }}/api/cron/daily-search"

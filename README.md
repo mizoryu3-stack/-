@@ -132,26 +132,26 @@ CSVの「民泊相談可否」列（「民泊利用確認状況」「オーナ�
 
 ## 日次自動探索（自動巡回エージェントの土台）
 
-`POST`/`GET /api/cron/daily-search` を叩くと、`src/lib/ingestion/runDailySearch.ts` が
-「`src/lib/ingestion/providers/registry.ts`の`PROVIDER_REGISTRY`のうち`connected:true`かつ
-`kind:"pull"`のソース」を1つずつ呼び出し、取得した物件を`ingestProperty()`で取込→
-`reconcileListingStatus()`で掲載状態を照合、まで自動で行います。結果は`SearchRun`
-（1回の実行全体）・`SearchRunSource`（ソースごとの内訳）としてDBに記録され、実行開始/終了時刻・
-成功/失敗ソース数・取得件数・新着件数・通知（`PropertyMatch`）生成件数を後から確認できます。
+`POST`/`GET /api/cron/daily-search` を叩くと、`src/lib/ingestion/runScheduledDailySearch.ts` が
+「今が`/settings`で設定した探索時刻かどうか」を判定し（後述）、該当すれば
+`src/lib/ingestion/runDailySearch.ts`が「`src/lib/ingestion/providers/registry.ts`の
+`PROVIDER_REGISTRY`のうち`connected:true`かつ`kind:"pull"`のソース」を1つずつ呼び出し、
+取得した物件を`ingestProperty()`で取込→`reconcileListingStatus()`で掲載状態を照合、まで
+自動で行います。結果は`SearchRun`（1回の実行全体）・`SearchRunSource`（ソースごとの内訳）
+としてDBに記録され、実行開始/終了時刻・成功/失敗ソース数・取得件数・新着件数・通知
+（`PropertyMatch`）生成件数を後から確認できます。
 
 **現時点では`homes`/`akiyabank`とも`connected:false`のため、対象ソースは0件です。**
-このAPIを叩いても`sourceCount:0`・`status:"COMPLETED"`のSearchRunが記録されるだけで、
-実際のデータ取得は行われません（LIFULL HOME'S API・空き家バンク等との正式なデータ提供合意が
-得られ次第、該当ソースの`sources/*.ts`を実装し、レジストリの`connected`を`true`にすることで
-対象に加わります。呼び出し側のコードは変更不要）。
+探索時刻になってこのAPIが実行されても`sourceCount:0`・`status:"COMPLETED"`のSearchRunが
+記録されるだけで、実際のデータ取得は行われません（LIFULL HOME'S API・空き家バンク等との
+正式なデータ提供合意が得られ次第、該当ソースの`sources/*.ts`を実装し、レジストリの
+`connected`を`true`にすることで対象に加わります。呼び出し側のコードは変更不要）。
 
 このAPIは`CRON_API_TOKEN`環境変数が未設定の場合は常に501を返し無効化されます（`/api/properties/ingest`
-と同じ安全側デフォルト）。実際に自動実行する場合は、Vercel Cron・GitHub Actionsのscheduled workflow・
-自前サーバーのOS cron等、デプロイ先に応じた外部スケジューラから、ヘッダー`x-cron-token`に
-`CRON_API_TOKEN`と同じ値を付けて1日1回呼び出す運用を想定しています（スケジューラの設定自体は
-未実施）。
+と同じ安全側デフォルト）。設定されている場合、ヘッダー`x-cron-token`の値が一致しなければ401を返します
+（STEP1から挙動は変えていません）。
 
-### 探索時刻の設定（STEP9）
+### 探索時刻の設定と自動実行（STEP9・STEP3）
 
 `/settings`から「自動探索 ON/OFF」「探索時刻（HH:mm）」を設定できます（`DailySearchSchedule`テーブル、
 `src/lib/schedule/`）。認証機能は未実装のため単一ユーザー（`userId`固定値`"default-user"`）前提ですが、
@@ -159,11 +159,39 @@ CSVの「民泊相談可否」列（「民泊利用確認状況」「オーナ�
 しています。タイムゾーンは値として保持しているものの（既定`Asia/Tokyo`）、UIでの変更は現時点では
 提供していません。
 
-**この設定は現時点では実際のCron実行と接続されていません**（保存するだけ）。`src/lib/schedule/scheduleTime.ts`
-の`isScheduledTimeNow(schedule, now)`が「現在時刻が設定された探索時刻と一致するか」を判定する純粋関数として
-用意済みで、STEP3で外部スケジューラを接続する際、「毎分（または数分間隔）で`/api/cron/daily-search`を
-呼び出し、この関数がtrueを返した時だけ実際に探索を実行する」という運用を想定しています（単一ユーザー・
-1日1回のみの実行で十分なため、探索時刻ごとに個別のCronジョブを組むような複雑な構成は避ける方針です）。
+`/api/cron/daily-search`が叩かれると、`src/lib/ingestion/runScheduledDailySearch.ts`が
+`DailySearchSchedule`を読み、`isScheduledTimeNow()`（`src/lib/schedule/scheduleTime.ts`。
+サーバーのタイムゾーンに依存せず、常に`schedule.timezone`基準で判定する）で「今が設定時刻かどうか」を
+判定します。一致すればそのときだけ`runDailySearch()`を実行し、一致しなければ何もせず200を返します
+（スケジュール未設定・OFF・時刻不一致・本日分は実行済み、のいずれも**エラーではなく正常なスキップ**として
+扱い、理由（`NO_SCHEDULE`/`DISABLED`/`NOT_SCHEDULED_TIME`/`ALREADY_RAN_TODAY`）をレスポンスと
+サーバーログの両方に残します。これらのケースではSearchRunは作成しません）。
+
+**二重実行防止はDBレベルで行っています。** `SearchRun.scheduledFor`（`DailySearchSchedule.timezone`基準の
+"YYYY-MM-DD"）に`@unique`制約を付けており、スケジュール実行時の`SearchRun`作成自体がこの制約で
+守られます。「先に確認してから作成する」方式ではなく「作成そのものが一意性を強制する」方式のため、
+外部スケジューラから複数リクエストがほぼ同時に来ても競合状態(race condition)なく二重実行を防げます
+（手動実行等、`scheduledFor`を指定しない`SearchRun`はこの制約の対象外＝何件あっても衝突しません）。
+
+外部スケジューラは、Vercel Cron・GitHub Actionsのscheduled workflow・自前サーバーのOS cron等、
+デプロイ先に応じて選定し、`/api/cron/daily-search`を毎分〜数分間隔で（ヘッダー`x-cron-token`に
+`CRON_API_TOKEN`と同じ値を付けて）呼び出す運用を想定しています。**現時点でこのアプリの実際の
+デプロイ先は未確定のため（リポジトリに`vercel.json`等の設定が存在しない）、特定サービスの契約・課金は
+行っていません。** 具体的な選択肢:
+
+- **Vercel Cron**（すでにVercelへデプロイ済み・デプロイ予定の場合の第一候補）: Hobbyプランは
+  cronジョブが1日1回までに制限されるため、本アプリのように「ユーザーが任意の時刻を設定でき、
+  数分間隔でポーリングして判定する」設計とは相性がよくありません。分単位の頻度で実行するには
+  Proプラン以上が必要です。
+- **GitHub Actions**（`.github/workflows/daily-search-cron.yml`）: デプロイ先を問わず使える、
+  追加課金不要の代替案としてワークフローを用意済みです。`schedule`トリガーは動作確認が済むまで
+  コメントアウトしてあり、有効化するには`APP_URL`・`CRON_API_TOKEN`をリポジトリのSecretsに設定した
+  上でコメントを外してください。GitHub Actionsのscheduled workflowは公式に5分未満の間隔を
+  設定できず、実際の発火はサーバー負荷により数分遅延することがある点に注意してください
+  （`workflow_dispatch`での手動実行にも対応しているため、設定確認にはそちらが使えます）。
+
+デバッグ用に、認証済みリクエスト（`x-cron-token`が正しい場合のみ）に限り、ヘッダー
+`x-cron-simulate-now`（ISO8601日時）で「現在時刻」を指定して動作確認できます。
 
 ## 対象エリアの拡張
 
@@ -210,7 +238,7 @@ src/
 - 新着物件のPush通知の実送信（メール通知は実装済み。`src/lib/notifications/notifyPropertyMatch.ts`参照）
 - 実際のメールサービス（Resend等）の契約・導入（現状は`EMAIL_PROVIDER`未設定時は送信スキップ、`console`はログ出力のみ）
 - ログイン機能（保存検索条件・通知の複数ユーザー対応。メール宛先も現状は単一の環境変数固定）
-- 外部スケジューラの実際の設定（探索時刻の設定自体は`/settings`から可能。`isScheduledTimeNow()`と接続してのCron実行はデプロイ先未確定のため未設定）
+- 外部スケジューラの実際の有効化（`isScheduledTimeNow()`との接続自体は完了済み。`.github/workflows/daily-search-cron.yml`の`schedule`トリガー有効化、またはVercel Cron等の設定はデプロイ先未確定のため未実施）
 - 複数ユーザーごとに異なる探索時刻・タイムゾーンを持てるようにする（`DailySearchSchedule`は構造上対応済みだが、UIでのタイムゾーン変更は現状未提供）
 - 周辺観光地・競合民泊の実データ化（不動産情報ライブラリには該当データがないため別ソースが必要）
 - 住宅宿泊事業法の180日制限、自治体ごとの民泊規制、旅館業許可の可能性確認（実データに基づく判定）

@@ -32,6 +32,16 @@ export interface DailySearchSummary {
   sources: SourceRunSummary[];
 }
 
+export interface RunDailySearchOptions {
+  /**
+   * STEP3: スケジュール実行（runScheduledDailySearch.ts）からのみ指定する。
+   * SearchRun.scheduledFor（"YYYY-MM-DD"、DailySearchSchedule.timezone基準）に記録され、
+   * DBのUNIQUE制約により同じ日のスケジュール実行が二重に作成されることを防ぐ。
+   * 手動実行・テスト等では省略し、scheduledForはnullのまま（制約の対象外）にする。
+   */
+  scheduledFor?: string;
+}
+
 /**
  * 日次自動探索（STEP1）の本体。
  *
@@ -56,11 +66,15 @@ export interface DailySearchSummary {
  */
 export async function runDailySearch(
   providers: ProviderInfo[] = getConnectedPullProviders(),
+  options?: RunDailySearchOptions,
 ): Promise<DailySearchSummary> {
   const startedAt = new Date();
 
+  // scheduledForを指定した場合、この create() 自体がUNIQUE制約違反(P2002)で失敗しうる
+  // （＝同じ日のスケジュール実行が既に存在する）。呼び出し元(runScheduledDailySearch.ts)で
+  // その例外を捕捉し、「二重実行としてスキップ」と判定する。
   const run = await prisma.searchRun.create({
-    data: { startedAt, status: "RUNNING", sourceCount: providers.length },
+    data: { startedAt, status: "RUNNING", sourceCount: providers.length, scheduledFor: options?.scheduledFor },
   });
 
   const sourceSummaries: SourceRunSummary[] = [];

@@ -42,6 +42,24 @@ function formatHHmmInTimezone(date: Date, timeZone: string): string {
 }
 
 /**
+ * 指定タイムゾーンでの「今日の日付」を"YYYY-MM-DD"形式で返す（STEP3の二重実行防止で使用）。
+ * サーバーのタイムゾーンに依存しないよう、必ずtimeZoneを指定してIntl.DateTimeFormatで
+ * 計算する（サーバーのローカル日時をそのまま使わない）。
+ */
+export function getScheduledDateKey(timeZone: string, now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const month = parts.find((p) => p.type === "month")?.value ?? "00";
+  const day = parts.find((p) => p.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * 現在時刻(now)がスケジュールされた探索時刻と一致するか（分単位）を判定する純粋関数。
  *
  * STEP3で外部スケジューラを「毎分（または数分間隔）でdaily-searchを呼び出し、この関数が
