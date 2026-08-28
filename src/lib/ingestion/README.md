@@ -23,16 +23,32 @@
 - `types.ts` — どのデータソースから来たデータも変換すべき正規化形式 `RawListingInput` と、
   その最低限のバリデーション `validateRawListing()`。緯度経度(`latitude`/`longitude`)を
   設定すると、`ingestProperty()`が自動的に`src/lib/publicData/`経由で公的データを取得する。
-- `ingestProperty.ts` — `RawListingInput` を受け取り、公的データの取得・民泊適性スコアの
-  計算を行った上でDBに書き込む唯一の入り口。`source` + `sourceId` が一致する既存物件が
-  あれば更新、なければ新規作成する（再取得時の重複防止）。
-- `sources/manual.ts` — 現時点で唯一実装済みのデータソース。手入力のダミーデータを
-  `RawListingInput[]` の形で返す。`prisma/seed.ts` から呼び出されている。
+  `listingStatus`/`firstSeenAt`/`lastSeenAt`/`lastCheckedAt`を指定すると掲載状態の
+  自動更新ロジックを上書きできる（管理画面・CSVインポートからの手動指定用）。
+- `ingestProperty.ts` — `RawListingInput` を受け取り、重複判定・公的データの取得・
+  民泊適性スコアの計算・掲載状態の更新を行った上でDBに書き込む唯一の入り口。
+- `duplicateDetection.ts` — 重複判定ロジック本体。`source + externalId` → `sourceUrl` →
+  住所/物件名の類似度・座標近接によるあいまい一致、の優先順位で判定する
+  （あいまい一致は自動統合せず `DuplicateCandidate` として記録するのみ）。
+- `csv/` — CSVインポートのパイプライン（`parseCsv.ts`＝依存なしの最小CSVパーサー、
+  `columnAliases.ts`＝英語/日本語の列名エイリアス表、`csvRowMapper.ts`＝1行分の
+  バリデーション・変換、`importCsv.ts`＝全体のオーケストレーションと`ImportBatch`の記録）。
+- `providers/registry.ts` — 物件データ提供元（Provider）のメタデータレジストリ。
+  push型（CSV・管理画面での手動登録）／pull型（外部API、現状すべて未接続）を整理する。
+- `sources/manual.ts` — 開発・テスト用のダミーデータ。`RawListingInput[]` の形で返す。
+  `prisma/seed.ts` から呼び出されている。
 - `sources/homes.ts` — **【未接続】** LIFULL HOME'S API用のスタブ。正式な利用許諾契約が
   締結されるまでは呼び出されない（呼び出すと例外を投げる）。
 - `sources/akiyabank.ts` — **【未接続】** 広島県「みんと。」・各市空き家バンク用のスタブ。
   利用規約上の二次利用禁止があるため、自治体からの正式なデータ提供が得られるまでは
   呼び出されない（呼び出すと例外を投げる）。
+
+## 管理画面（/admin）からの実データ投入
+
+`/admin/properties/new`（1件ずつの手動登録）と `/admin/import`（CSV一括登録・更新）から、
+合法的に入手した実物件データを投入できる。どちらも内部的には`ingestProperty()`を通るため、
+検索・スコアリング・収益シミュレーション・お気に入りは既存のダミーデータと同じように動作する。
+詳しくはアプリのREADME「管理画面について」を参照。
 
 ## SUUMO・アットホーム（一般サイト）について
 

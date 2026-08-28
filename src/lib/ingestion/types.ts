@@ -1,5 +1,8 @@
 import type { BuildingTypeForScore } from "@/lib/score";
 
+export type ListingStatusInput = "ACTIVE" | "ENDED" | "UNKNOWN";
+export const VALID_LISTING_STATUSES: ListingStatusInput[] = ["ACTIVE", "ENDED", "UNKNOWN"];
+
 /**
  * 外部物件データを取り込むための正規化済みデータ形式。
  *
@@ -39,6 +42,16 @@ export interface RawListingInput {
    *  省略した場合、掲載状態の自動照合(reconcileListingStatus)の対象にはならない。 */
   externalId?: string;
   sourceUrl?: string;
+
+  /**
+   * 掲載状態のライフサイクルを手動で上書きしたい場合に指定する（管理画面からの手動登録・
+   * CSVインポートでの「掲載終了」への変更など）。省略した場合は ingestProperty() 側の
+   * 自動ロジック（取り込めた＝ACTIVE、lastSeenAt/lastCheckedAtを現在時刻に更新）に従う。
+   */
+  listingStatus?: ListingStatusInput;
+  firstSeenAt?: Date;
+  lastSeenAt?: Date;
+  lastCheckedAt?: Date;
 
   /** 収益シミュレーションの初期値（省略時はrentから簡易推定） */
   simulation?: {
@@ -109,6 +122,13 @@ export function validateRawListing(input: unknown): ValidationError[] {
   }
   if (r.longitude !== undefined && (typeof r.longitude !== "number" || r.longitude < -180 || r.longitude > 180)) {
     errors.push({ field: "longitude", message: "-180〜180の数値である必要があります" });
+  }
+
+  if (
+    r.listingStatus !== undefined &&
+    !VALID_LISTING_STATUSES.includes(r.listingStatus as ListingStatusInput)
+  ) {
+    errors.push({ field: "listingStatus", message: "ACTIVE / ENDED / UNKNOWN のいずれかである必要があります" });
   }
 
   return errors;

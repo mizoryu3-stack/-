@@ -77,6 +77,9 @@ model Property {
   nearbyAttractions  NearbyAttraction[]
   competitors        CompetitorListing[]
   publicDataSnapshot PublicDataSnapshot?
+  // 重複候補: このPropertyが「新規取込側」として記録した候補、および「既存の類似物件側」として記録された候補
+  duplicatesAsNew      DuplicateCandidate[] @relation("DuplicateCandidateProperty")
+  duplicatesAsExisting DuplicateCandidate[] @relation("DuplicateCandidateOf")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -142,6 +145,44 @@ model PublicDataSnapshot {
   stormSurgeRiskArea Boolean?
 
   fetchedAt DateTime @default(now())
+}
+
+enum DuplicateCandidateStatus {
+  PENDING // 未確認（管理画面でのレビュー待ち）
+  CONFIRMED // 人が確認し、実際に重複だったと判断したもの
+  DISMISSED // 人が確認し、重複ではないと判断したもの
+}
+
+// 重複の可能性がある物件のペアを記録する（自動統合はしない）。
+// externalId・sourceUrl による完全一致では判定できず、物件名・住所の類似度や
+// 座標の近接度から「重複かもしれない」と検出された場合にのみ作成される。
+// src/lib/ingestion/duplicateDetection.ts 参照。
+model DuplicateCandidate {
+  id                  Int      @id @default(autoincrement())
+  propertyId          Int // 新しく取り込まれた物件
+  property            Property @relation("DuplicateCandidateProperty", fields: [propertyId], references: [id], onDelete: Cascade)
+  candidatePropertyId Int // 類似していると判定された既存物件
+  candidateProperty   Property @relation("DuplicateCandidateOf", fields: [candidatePropertyId], references: [id], onDelete: Cascade)
+  reason              String // 判定理由（例:「住所が類似」「物件名が類似」「座標が近接」）
+  similarity          Float // 0.0〜1.0の類似度の目安
+  status              DuplicateCandidateStatus @default(PENDING)
+  createdAt           DateTime                 @default(now())
+}
+
+// CSVインポート等、一括取込の実行履歴。
+// 取込結果（件数・エラー内容）を後から管理画面で確認できるようにするための監査ログ。
+model ImportBatch {
+  id                      Int      @id @default(autoincrement())
+  source                  String // 取込元識別子（例: "csv"）
+  fileName                String?
+  totalRows               Int
+  createdCount            Int
+  updatedCount            Int
+  errorCount              Int
+  duplicateCandidateCount Int
+  // 行単位のエラー一覧をJSON文字列として保存: [{ "row": 3, "message": "家賃が不正です" }, ...]
+  errorsJson              String?
+  createdAt               DateTime @default(now())
 }
 
 // 収益シミュレーションの「初期値・保存された編集値」

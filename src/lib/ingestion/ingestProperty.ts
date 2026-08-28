@@ -3,8 +3,16 @@ import { calculateMinpakuScore } from "@/lib/score";
 import { getRegulationLevel } from "@/lib/regions";
 import { fetchPublicDataForProperty } from "@/lib/publicData/enrichProperty";
 import { unavailablePublicDataResult } from "@/lib/publicData/types";
-import { findDuplicateCandidate } from "@/lib/ingestion/duplicateDetection";
+import { findConfidentMatch, findDuplicateCandidates } from "@/lib/ingestion/duplicateDetection";
 import type { RawListingInput } from "@/lib/ingestion/types";
+
+export interface IngestResult {
+  propertyId: number;
+  /** 新規作成された場合 true、既存物件を更新した場合 false */
+  created: boolean;
+  /** 自動統合はしていない「重複候補」として記録された件数（新規作成時のみ発生しうる） */
+  duplicateCandidateCount: number;
+}
 
 /**
  * 正規化済みの物件データ(RawListingInput)を受け取り、
@@ -14,27 +22,29 @@ import type { RawListingInput } from "@/lib/ingestion/types";
  *     DB に反映
  * するデータ取得レイヤーの本体。
  *
- * 手入力データ(prisma/seed.ts)も将来の外部データ取得アダプタ（未実装）も、
- * 必ずこの関数を通してDBに書き込む。これにより「データソースが増えても
+ * 手入力データ(prisma/seed.ts)・管理画面からの手動登録・CSVインポート・将来の外部データ取得
+ * アダプタは、すべて必ずこの関数を通してDBに書き込む。これにより「データソースが増えても
  * スコアリング・検索画面には一切手を入れなくてよい」という構造を保つ。
  *
- * 重複判定:
- *  - externalId がある場合: source + externalId の一致で既存物件を判定する
- *  - externalId が無い場合: findDuplicateCandidate() に委譲する（現時点では常に
- *    「候補なし」を返すダミー実装。将来、住所・物件名等でのあいまい一致を追加できる）
+ * 重複判定（src/lib/ingestion/duplicateDetection.ts）:
+ *  1. source + externalId の完全一致 → 更新
+ *  2. 同一 sourceUrl → 更新
+ *  3. 上記で判定できない場合は新規作成し、あいまい一致で見つかった類似物件があれば
+ *     DuplicateCandidate として記録する（自動統合はしない）
  *
  * 掲載状態のライフサイクル:
- *  - この関数が呼ばれる（＝その物件データが取得できた）たびに「確認できた」とみなし、
- *    listingStatus を ACTIVE に、lastSeenAt/lastCheckedAt を現在時刻に更新する。
- *    新規作成時のみ firstSeenAt も設定する。
- *  - 「一定期間確認できない物件を ENDED/UNKNOWN にする」処理は、この関数の対象外
- *    （外部データを再取得しない限りそのような物件は存在しないため）。
- *    src/lib/ingestion/reconcileListingStatus.ts を参照。
+ *  - raw.listingStatus 等が明示的に指定されていればそれを優先する（管理画面・CSVからの
+ *    手動指定に対応）
+ *  - 指定が無い場合、この関数が呼ばれる（＝その物件データが取得できた）こと自体を
+ *    「ACTIVEとして確認できた」とみなし、lastSeenAt/lastCheckedAtを現在時刻に更新する。
+ *    新規作成時のみ firstSeenAt も設定する
+ *  - 「一定期間確認できない物件を自動でENDED/UNKNOWNにする」処理はこの関数の対象外。
+ *    src/lib/ingestion/reconcileListingStatus.ts を参照
  *
  * 公的データの取得はベストエフォートであり、失敗しても本関数自体は失敗しない
  * （fetchPublicDataForProperty は例外を投げず、常に何らかの結果を返す設計）。
  */
-export async function ingestProperty(raw: RawListingInput) {
+export async function ingestProperty(raw: RawListingInput): Promise<IngestResult> {
   const nearbyAttractions = raw.nearbyAttractions ?? [];
   const competitors = raw.competitors ?? [];
 
@@ -84,6 +94,19 @@ export async function ingestProperty(raw: RawListingInput) {
 
   const now = new Date();
 
+  // --- 重複判定 ---
+  const existing = await findConfidentMatch(raw);
+  const duplicateCandidates = existing ? [] : await findDuplicateCandidates(raw);
+
+  // --- 掲載状態のライフサイクル計算 ---
+  const effectiveStatus = raw.listingStatus ?? "ACTIVE";
+  const lastCheckedAt = raw.lastCheckedAt ?? now;
+  // ACTIVEとして確認できた場合のみ lastSeenAt を更新する。
+  // 明示的にENDED/UNKNOWNへ変更する場合は「見えなくなった」ことの確認なので、
+  // 最後に実際に見えていた日時(lastSeenAt)は更新しない（既存値を維持）。
+  const lastSeenAt =
+    raw.lastSeenAt ?? (effectiveStatus === "ACTIVE" ? now : (existing?.lastSeenAt ?? now));
+
   const baseData = {
     name: raw.name,
     prefecture: raw.prefecture,
@@ -109,10 +132,9 @@ export async function ingestProperty(raw: RawListingInput) {
     externalId: raw.externalId,
     sourceUrl: raw.sourceUrl,
     minpakuScore,
-    // この取込で「確認できた」ため常にACTIVEへ戻し、lastSeenAt/lastCheckedAtを更新する
-    listingStatus: "ACTIVE" as const,
-    lastSeenAt: now,
-    lastCheckedAt: now,
+    listingStatus: effectiveStatus,
+    lastSeenAt,
+    lastCheckedAt,
   };
 
   const simulationData = {
@@ -125,16 +147,12 @@ export async function ingestProperty(raw: RawListingInput) {
     otherCost: raw.simulation?.otherCost ?? 5_000,
   };
 
-  const existing = raw.externalId
-    ? await prisma.property.findUnique({
-        where: { source_externalId: { source: raw.source, externalId: raw.externalId } },
-      })
-    : await findDuplicateCandidate(raw);
-
-  const propertyId = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const property = existing
       ? await tx.property.update({ where: { id: existing.id }, data: baseData })
-      : await tx.property.create({ data: { ...baseData, firstSeenAt: now } });
+      : await tx.property.create({
+          data: { ...baseData, firstSeenAt: raw.firstSeenAt ?? now },
+        });
 
     await tx.simulationInput.upsert({
       where: { propertyId: property.id },
@@ -163,8 +181,19 @@ export async function ingestProperty(raw: RawListingInput) {
       update: { ...publicData, fetchedAt: new Date() },
     });
 
-    return property.id;
+    if (!existing && duplicateCandidates.length > 0) {
+      await tx.duplicateCandidate.createMany({
+        data: duplicateCandidates.map((c) => ({
+          propertyId: property.id,
+          candidatePropertyId: c.property.id,
+          reason: c.reason,
+          similarity: c.similarity,
+        })),
+      });
+    }
+
+    return { propertyId: property.id, created: !existing };
   });
 
-  return propertyId;
+  return { ...result, duplicateCandidateCount: duplicateCandidates.length };
 }

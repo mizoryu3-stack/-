@@ -41,7 +41,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "listings（配列）が必要です。" }, { status: 400 });
   }
 
-  const results: { index: number; propertyId?: number; errors?: string[] }[] = [];
+  const results: {
+    index: number;
+    propertyId?: number;
+    created?: boolean;
+    duplicateCandidateCount?: number;
+    errors?: string[];
+  }[] = [];
 
   for (const [index, raw] of listings.entries()) {
     const validationErrors = validateRawListing(raw);
@@ -50,8 +56,10 @@ export async function POST(req: NextRequest) {
       continue;
     }
     try {
-      const propertyId = await ingestProperty(raw as RawListingInput);
-      results.push({ index, propertyId });
+      const { propertyId, created, duplicateCandidateCount } = await ingestProperty(
+        raw as RawListingInput,
+      );
+      results.push({ index, propertyId, created, duplicateCandidateCount });
     } catch (e) {
       results.push({ index, errors: [e instanceof Error ? e.message : "取込に失敗しました。"] });
     }
