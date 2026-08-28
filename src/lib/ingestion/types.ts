@@ -23,6 +23,10 @@ export interface RawListingInput {
   stationName?: string;
   stationWalkMin: number;
   hasParking: boolean;
+  /** 緯度経度（任意）。設定すると国土交通省 不動産情報ライブラリ等の位置情報APIによる
+   *  周辺環境の自動評価（PublicDataSnapshot）が有効になる。未設定の場合はスキップされる。 */
+  latitude?: number;
+  longitude?: number;
   deposit?: number;
   keyMoney?: number;
   initialCost?: number;
@@ -99,6 +103,13 @@ export function validateRawListing(input: unknown): ValidationError[] {
 
   if (typeof r.hasParking !== "boolean") {
     errors.push({ field: "hasParking", message: "真偽値である必要があります" });
+  }
+
+  if (r.latitude !== undefined && (typeof r.latitude !== "number" || r.latitude < -90 || r.latitude > 90)) {
+    errors.push({ field: "latitude", message: "-90〜90の数値である必要があります" });
+  }
+  if (r.longitude !== undefined && (typeof r.longitude !== "number" || r.longitude < -180 || r.longitude > 180)) {
+    errors.push({ field: "longitude", message: "-180〜180の数値である必要があります" });
   }
 
   return errors;

@@ -42,6 +42,11 @@ model Property {
   photoUrl       String? // 物件写真URL（未設定の場合はプレースホルダー表示）
   memo           String? // メモ
 
+  // 緯度経度（任意）。国土交通省 不動産情報ライブラリ等の位置情報APIを叩くために使用。
+  // 現時点では自動ジオコーディングは実装しておらず、手入力データのみ手動で設定している。
+  latitude  Float?
+  longitude Float?
+
   // --- データ出所（外部データ取込レイヤー用。STEP5） ---
   source    String    @default("manual") // "manual" | "suumo" | "homes" | "athome" など。将来のソース追加はアダプタを増やすだけでよい
   sourceId  String? // 外部サイト側の物件ID（重複取込防止のキー。手入力データはnull）
@@ -52,10 +57,11 @@ model Property {
   // 「参考スコア」であり、法的な民泊可否を確定するものではない。
   minpakuScore Int
 
-  simulationInput   SimulationInput?
-  favorite          Favorite?
-  nearbyAttractions NearbyAttraction[]
-  competitors       CompetitorListing[]
+  simulationInput    SimulationInput?
+  favorite           Favorite?
+  nearbyAttractions  NearbyAttraction[]
+  competitors        CompetitorListing[]
+  publicDataSnapshot PublicDataSnapshot?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,6 +88,44 @@ model CompetitorListing {
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   platform   String? // 掲載プラットフォーム名（例: Airbnb）任意
   distanceKm Float // 物件からの概算距離（km）
+}
+
+// 国土交通省「不動産情報ライブラリ」等の公的データから取得した、物件周辺の参考情報。
+// Propertyと1:1。あくまで「周辺環境・立地・災害リスクの参考評価」であり、
+// 民泊営業の可否や安全性を保証・確定するものではない（src/lib/publicData/types.ts の
+// PUBLIC_DATA_DISCLAIMER を参照）。
+//
+// 取得はベストエフォートで行い、APIキー未設定・通信エラー・対象データなし等が発生しても
+// 取り込み処理自体は失敗させず、fetchStatus/fetchNoteに状況を記録するのみとする。
+model PublicDataSnapshot {
+  id         Int      @id @default(autoincrement())
+  propertyId Int      @unique
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  // "OK"（全項目取得成功） / "PARTIAL"（一部のみ取得成功） /
+  // "UNAVAILABLE"（APIキー未設定・全滅等） / "SKIPPED"（緯度経度未設定のため未実施）
+  fetchStatus String
+  fetchNote   String? // 画面表示用の補足（例:「公的データを取得できませんでした」）
+
+  // 取引価格情報API(XIT001)による、同一市区町村・直近四半期の取引単価の平均（参考値）
+  areaAvgUnitPricePerSqm Int?
+  areaPriceYear          Int?
+  areaPriceQuarter       Int?
+
+  // 用途地域API(XKT002)
+  useZone String?
+
+  // 駅別乗降客数API(XKT015)
+  stationDailyUsers Int?
+  stationUsageYear  Int?
+
+  // 防災系API(XKT026/027/028/029)。該当タイル内に該当区域があるかの簡易判定（真偽値）。
+  floodRiskArea      Boolean?
+  tsunamiRiskArea    Boolean?
+  landslideRiskArea  Boolean?
+  stormSurgeRiskArea Boolean?
+
+  fetchedAt DateTime @default(now())
 }
 
 // 収益シミュレーションの「初期値・保存された編集値」

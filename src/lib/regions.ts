@@ -24,14 +24,32 @@ export interface SupportedArea {
 
 export const SUPPORTED_PREFECTURE = "広島県";
 
+// 広島市は8区に分かれており、Property.city には「広島市中区」のように区名まで含めて
+// 保存している。SUPPORTED_AREASもそれに合わせて区単位で保持する
+// （以前は「広島市」のみを掲載しており、検索フィルタが区名と一致せず機能していなかった）。
+const HIROSHIMA_CITY_WARDS = [
+  "広島市中区",
+  "広島市東区",
+  "広島市南区",
+  "広島市西区",
+  "広島市安佐南区",
+  "広島市安佐北区",
+  "広島市安芸区",
+  "広島市佐伯区",
+] as const;
+
+const HIROSHIMA_CITY_REGULATION_NOTE =
+  "政令指定都市のため住宅宿泊事業法の届出窓口・管理ルールが比較的細かい傾向があります（仮の目安・要確認）。";
+
 export const SUPPORTED_AREAS: SupportedArea[] = [
-  {
-    prefecture: "広島県",
-    city: "広島市",
-    regulationLevel: "MEDIUM",
-    regulationNote:
-      "政令指定都市のため住宅宿泊事業法の届出窓口・管理ルールが比較的細かい傾向があります（仮の目安・要確認）。",
-  },
+  ...HIROSHIMA_CITY_WARDS.map(
+    (city): SupportedArea => ({
+      prefecture: "広島県",
+      city,
+      regulationLevel: "MEDIUM",
+      regulationNote: HIROSHIMA_CITY_REGULATION_NOTE,
+    }),
+  ),
   {
     prefecture: "広島県",
     city: "廿日市市",
@@ -63,6 +81,33 @@ export function getRegulationLevel(city: string): RegulationLevel {
 /** 民泊適性スコア全体に添える免責文言 */
 export const MINPAKU_SCORE_DISCLAIMER =
   "民泊適性スコアはプロトタイプの仮ロジックによる参考値です。住宅宿泊事業法の180日制限、旅館業許可の可否、マンション管理規約、自治体ごとの条例などの法的な民泊可否を判定・保証するものではありません。実際の運営前に必ず自治体・管理組合等にご確認ください。";
+
+/**
+ * 国土交通省「不動産情報ライブラリ」APIが要求する5桁の市区町村コード（全国地方公共団体コードの
+ * 上5桁）。src/lib/publicData/ から、取引価格情報API(XIT001)を呼び出す際に使用する。
+ *
+ * 広島市中区・東区・南区は複数の公的資料で確認済み。それ以外の区は一般に公表されている
+ * コード体系からの推定であり、実際にAPIを呼び出した際にコードが誤っていても
+ * （該当データなし・エラー）として安全にフォールバックする設計になっているため、
+ * 多少の誤りがあってもアプリの動作には影響しない。
+ */
+export const MUNICIPALITY_CODES: Partial<Record<string, string>> = {
+  "広島市中区": "34101",
+  "広島市東区": "34102",
+  "広島市南区": "34103",
+  "広島市西区": "34104",
+  "広島市安佐南区": "34108",
+  "広島市安佐北区": "34109",
+  "広島市安芸区": "34106",
+  "広島市佐伯区": "34107",
+  "呉市": "34202",
+  "東広島市": "34212",
+  "廿日市市": "34213",
+};
+
+export function getMunicipalityCode(city: string): string | undefined {
+  return MUNICIPALITY_CODES[city];
+}
 
 export const LAYOUT_OPTIONS = [
   "1R",

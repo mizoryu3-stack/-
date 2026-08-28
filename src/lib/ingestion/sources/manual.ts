@@ -14,6 +14,12 @@ import type { RawListingInput } from "@/lib/ingestion/types";
  * 物件データは STEP6 の方針に合わせ、対象地域（広島県 広島市/廿日市市/呉市/東広島市）の
  * サンプルデータに揃えてある。周辺観光地・競合件数は説明用の仮の数値であり、
  * 実際の統計・調査結果ではない。
+ *
+ * 緯度経度(latitude/longitude)は、各物件の住所エリアに基づく概算値を手動で設定したもので、
+ * ジオコーディングAPI等による自動算出ではない（要検証）。国土交通省 不動産情報ライブラリ
+ * 等の位置情報APIを使った公的データ取得(src/lib/publicData/)の動作確認に使うことを
+ * 主目的としている。将来的に自動ジオコーディングへ置き換える場合も、
+ * RawListingInput.latitude/longitude の型はそのまま流用できる。
  */
 export function getManualListings(): RawListingInput[] {
   return [
@@ -22,6 +28,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "広島市中区",
       address: "広島県広島市中区大手町1-2-3",
+      latitude: 34.3955,
+      longitude: 132.4553,
       buildingType: "APARTMENT",
       rent: 118_000,
       managementFee: 8_000,
@@ -52,6 +60,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "広島市中区",
       address: "広島県広島市中区基町5-6",
+      latitude: 34.4008,
+      longitude: 132.4553,
       buildingType: "APARTMENT",
       rent: 95_000,
       managementFee: 6_000,
@@ -80,6 +90,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "広島市南区",
       address: "広島県広島市南区宇品海岸2-3-4",
+      latitude: 34.3567,
+      longitude: 132.4614,
       buildingType: "HOUSE",
       rent: 82_000,
       managementFee: 0,
@@ -102,6 +114,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "広島市東区",
       address: "広島県広島市東区光町1-9-1",
+      latitude: 34.3993,
+      longitude: 132.4813,
       buildingType: "APARTMENT",
       rent: 88_000,
       managementFee: 5_000,
@@ -129,6 +143,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "廿日市市",
       address: "広島県廿日市市宮島口1-2-3",
+      latitude: 34.3197,
+      longitude: 132.313,
       buildingType: "APARTMENT",
       rent: 72_000,
       managementFee: 4_000,
@@ -157,6 +173,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "廿日市市",
       address: "広島県廿日市市宮島町4-5",
+      latitude: 34.2969,
+      longitude: 132.3197,
       buildingType: "HOUSE",
       rent: 68_000,
       managementFee: 0,
@@ -186,6 +204,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "廿日市市",
       address: "広島県廿日市市天神1-2",
+      latitude: 34.3487,
+      longitude: 132.3308,
       buildingType: "APARTMENT",
       rent: 60_000,
       managementFee: 3_000,
@@ -208,6 +228,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "呉市",
       address: "広島県呉市本通4-5-6",
+      latitude: 34.2492,
+      longitude: 132.5656,
       buildingType: "APARTMENT",
       rent: 65_000,
       managementFee: 4_000,
@@ -233,6 +255,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "呉市",
       address: "広島県呉市音戸町北隠渡1-2",
+      latitude: 34.2028,
+      longitude: 132.5333,
       buildingType: "HOUSE",
       rent: 55_000,
       managementFee: 0,
@@ -255,6 +279,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "呉市",
       address: "広島県呉市中央3-1-1",
+      latitude: 34.2498,
+      longitude: 132.5644,
       buildingType: "APARTMENT",
       rent: 58_000,
       managementFee: 3_500,
@@ -280,6 +306,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "東広島市",
       address: "広島県東広島市西条本町5-6",
+      latitude: 34.4267,
+      longitude: 132.7442,
       buildingType: "APARTMENT",
       rent: 62_000,
       managementFee: 4_000,
@@ -305,6 +333,8 @@ export function getManualListings(): RawListingInput[] {
       prefecture: "広島県",
       city: "東広島市",
       address: "広島県東広島市鏡山3-4-5",
+      latitude: 34.4008,
+      longitude: 132.7169,
       buildingType: "HOUSE",
       rent: 58_000,
       managementFee: 0,

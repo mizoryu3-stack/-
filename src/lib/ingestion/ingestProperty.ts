@@ -1,12 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { calculateMinpakuScore } from "@/lib/score";
 import { getRegulationLevel } from "@/lib/regions";
+import { fetchPublicDataForProperty } from "@/lib/publicData/enrichProperty";
+import { unavailablePublicDataResult } from "@/lib/publicData/types";
 import type { RawListingInput } from "@/lib/ingestion/types";
 
 /**
  * 正規化済みの物件データ(RawListingInput)を受け取り、
- *  1. 周辺観光地・競合件数・地域の民泊規制レベルから民泊適性スコアを算出
- *  2. Property・SimulationInput・NearbyAttraction・CompetitorListing を DB に反映
+ *  1. 周辺観光地・競合件数・地域の民泊規制レベル・公的データ(国土交通省 不動産情報ライブラリ)
+ *     から民泊適性スコアを算出
+ *  2. Property・SimulationInput・NearbyAttraction・CompetitorListing・PublicDataSnapshot を
+ *     DB に反映
  * するデータ取得レイヤーの本体。
  *
  * 手入力データ(prisma/seed.ts)も将来の外部データ取得アダプタ（未実装）も、
@@ -15,6 +19,9 @@ import type { RawListingInput } from "@/lib/ingestion/types";
  *
  * source + sourceId が一致する既存物件があれば更新（再取得時の重複防止）、
  * なければ新規作成する。sourceId が無い手入力データは常に新規作成する。
+ *
+ * 公的データの取得はベストエフォートであり、失敗しても本関数自体は失敗しない
+ * （fetchPublicDataForProperty は例外を投げず、常に何らかの結果を返す設計）。
  */
 export async function ingestProperty(raw: RawListingInput) {
   const nearbyAttractions = raw.nearbyAttractions ?? [];
@@ -28,6 +35,17 @@ export async function ingestProperty(raw: RawListingInput) {
   const competitorCount = competitors.filter((c) => c.distanceKm <= 2).length;
   const regulationLevel = getRegulationLevel(raw.city);
 
+  // fetchPublicDataForProperty は例外を投げない設計だが、念のため二重に保護し、
+  // 想定外のエラーが起きても物件の取り込み自体は絶対に止めない。
+  const publicData = await fetchPublicDataForProperty({
+    latitude: raw.latitude ?? null,
+    longitude: raw.longitude ?? null,
+    city: raw.city,
+  }).catch((error: unknown) => {
+    console.warn("公的データの取得中に予期しないエラーが発生しました:", error);
+    return unavailablePublicDataResult("公的データの取得中に予期しないエラーが発生しました。");
+  });
+
   const { total: minpakuScore } = calculateMinpakuScore({
     rent: raw.rent,
     areaSqm: raw.areaSqm,
@@ -39,6 +57,15 @@ export async function ingestProperty(raw: RawListingInput) {
     nearbyAttractionCount,
     competitorCount,
     regulationLevel,
+    publicData: {
+      areaAvgUnitPricePerSqm: publicData.areaAvgUnitPricePerSqm,
+      useZone: publicData.useZone,
+      stationDailyUsers: publicData.stationDailyUsers,
+      floodRiskArea: publicData.floodRiskArea,
+      tsunamiRiskArea: publicData.tsunamiRiskArea,
+      landslideRiskArea: publicData.landslideRiskArea,
+      stormSurgeRiskArea: publicData.stormSurgeRiskArea,
+    },
   });
 
   // 宿泊単価が未指定の場合、家賃から簡易推定（ユーザーが後で自由に編集する前提の初期値）
@@ -63,6 +90,8 @@ export async function ingestProperty(raw: RawListingInput) {
     initialCost: raw.initialCost,
     photoUrl: raw.photoUrl,
     memo: raw.memo,
+    latitude: raw.latitude,
+    longitude: raw.longitude,
     source: raw.source,
     sourceId: raw.sourceId,
     sourceUrl: raw.sourceUrl,
@@ -111,6 +140,12 @@ export async function ingestProperty(raw: RawListingInput) {
         data: competitors.map((c) => ({ ...c, propertyId: property.id })),
       });
     }
+
+    await tx.publicDataSnapshot.upsert({
+      where: { propertyId: property.id },
+      create: { propertyId: property.id, ...publicData },
+      update: { ...publicData, fetchedAt: new Date() },
+    });
 
     return property.id;
   });

@@ -3,6 +3,7 @@ import type {
   SimulationInput,
   NearbyAttraction,
   CompetitorListing,
+  PublicDataSnapshot,
 } from "@/generated/prisma/client";
 
 export type PropertyWithRelations = Property & {
@@ -10,6 +11,7 @@ export type PropertyWithRelations = Property & {
   favorite?: { id: number } | null;
   nearbyAttractions?: NearbyAttraction[];
   competitors?: CompetitorListing[];
+  publicDataSnapshot?: PublicDataSnapshot | null;
 };
 
 export const SORT_OPTIONS = [

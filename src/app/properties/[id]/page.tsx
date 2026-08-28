@@ -29,6 +29,7 @@ export default async function PropertyDetailPage({
       favorite: true,
       nearbyAttractions: { orderBy: { distanceKm: "asc" } },
       competitors: true,
+      publicDataSnapshot: true,
     },
   });
 
@@ -42,6 +43,7 @@ export default async function PropertyDetailPage({
       : null;
   const nearbyAttractionCount = property.nearbyAttractions.filter((a) => a.distanceKm <= 5).length;
   const competitorCount = property.competitors.filter((c) => c.distanceKm <= 2).length;
+  const pd = property.publicDataSnapshot;
 
   const { breakdown } = calculateMinpakuScore({
     rent: property.rent,
@@ -54,6 +56,17 @@ export default async function PropertyDetailPage({
     nearbyAttractionCount,
     competitorCount,
     regulationLevel: getRegulationLevel(property.city),
+    publicData: pd
+      ? {
+          areaAvgUnitPricePerSqm: pd.areaAvgUnitPricePerSqm,
+          useZone: pd.useZone,
+          stationDailyUsers: pd.stationDailyUsers,
+          floodRiskArea: pd.floodRiskArea,
+          tsunamiRiskArea: pd.tsunamiRiskArea,
+          landslideRiskArea: pd.landslideRiskArea,
+          stormSurgeRiskArea: pd.stormSurgeRiskArea,
+        }
+      : null,
   });
 
   const sim = property.simulationInput;
