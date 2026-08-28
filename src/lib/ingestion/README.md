@@ -40,6 +40,11 @@
   バリデーション・変換、`importCsv.ts`＝全体のオーケストレーションと`ImportBatch`の記録）。
 - `providers/registry.ts` — 物件データ提供元（Provider）のメタデータレジストリ。
   push型（CSV・管理画面での手動登録）／pull型（外部API、現状すべて未接続）を整理する。
+  pull型ソースは`fetch`フィールドに取得関数の参照をあらかじめ登録してあり、`connected`を
+  `true`にするだけで`runDailySearch.ts`の対象に加わる（`getConnectedPullProviders()`参照）。
+- `runDailySearch.ts` — 日次自動探索（`/api/cron/daily-search`から呼ばれる）の本体。
+  接続済みpull型ソースを1つずつ`fetch()`→`ingestProperty()`→`reconcileListingStatus()`の順に
+  処理し、結果を`SearchRun`/`SearchRunSource`に記録する。1ソースの失敗は他ソースに影響しない。
 - `sources/manual.ts` — 開発・テスト用のダミーデータ。`RawListingInput[]` の形で返す。
   `prisma/seed.ts` から呼び出されている。
 - `sources/homes.ts` — **【未接続】** LIFULL HOME'S API用のスタブ。正式な利用許諾契約が

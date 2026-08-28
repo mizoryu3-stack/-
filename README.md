@@ -34,6 +34,22 @@ npm run dev
 
 http://localhost:3000 を開いてください。
 
+## テスト
+
+```bash
+npm run test         # 回帰テスト一式（tests/配下）を一度だけ実行
+npm run test:watch   # ウォッチモード
+npm run lint
+npx tsc --noEmit
+```
+
+`npm run test` は開発用の`dev.db`とは別に、専用のテストDB（`prisma/test.db`。gitignore済み）を
+実行のたびに作り直して使う。`ingestProperty()`・重複判定・保存検索条件とのマッチング・
+掲載状態の自動照合・日次自動探索の主要ロジックを、実際のPrisma+SQLiteに対して検証する
+（外部ネットワーク呼び出しは行わない。`REINFOLIB_API_KEY`未設定時は公的データ取得が
+即座にスキップされる仕様を利用している）。過去のPlaywrightによる実機確認（`/tmp`配下の
+使い捨てスクリプト）とは別物で、こちらはリポジトリにコミットされ再現可能。
+
 ## データフローの構造（外部データ取込に備えた設計）
 
 ```
@@ -107,6 +123,27 @@ CSV/APIから物件を取込 → 新規物件判定 → 保存検索条件と照
 
 ⚠️ 認証機能は未実装のため、保存検索条件・通知は「単一ユーザー」前提です（`userId`は固定値`"default-user"`）。将来ログイン機能を追加する際、この値を実ユーザーIDに差し替えるだけで移行できます。
 
+## 日次自動探索（自動巡回エージェントの土台）
+
+`POST`/`GET /api/cron/daily-search` を叩くと、`src/lib/ingestion/runDailySearch.ts` が
+「`src/lib/ingestion/providers/registry.ts`の`PROVIDER_REGISTRY`のうち`connected:true`かつ
+`kind:"pull"`のソース」を1つずつ呼び出し、取得した物件を`ingestProperty()`で取込→
+`reconcileListingStatus()`で掲載状態を照合、まで自動で行います。結果は`SearchRun`
+（1回の実行全体）・`SearchRunSource`（ソースごとの内訳）としてDBに記録され、実行開始/終了時刻・
+成功/失敗ソース数・取得件数・新着件数・通知（`PropertyMatch`）生成件数を後から確認できます。
+
+**現時点では`homes`/`akiyabank`とも`connected:false`のため、対象ソースは0件です。**
+このAPIを叩いても`sourceCount:0`・`status:"COMPLETED"`のSearchRunが記録されるだけで、
+実際のデータ取得は行われません（LIFULL HOME'S API・空き家バンク等との正式なデータ提供合意が
+得られ次第、該当ソースの`sources/*.ts`を実装し、レジストリの`connected`を`true`にすることで
+対象に加わります。呼び出し側のコードは変更不要）。
+
+このAPIは`CRON_API_TOKEN`環境変数が未設定の場合は常に501を返し無効化されます（`/api/properties/ingest`
+と同じ安全側デフォルト）。実際に自動実行する場合は、Vercel Cron・GitHub Actionsのscheduled workflow・
+自前サーバーのOS cron等、デプロイ先に応じた外部スケジューラから、ヘッダー`x-cron-token`に
+`CRON_API_TOKEN`と同じ値を付けて1日1回呼び出す運用を想定しています（スケジューラの設定自体は
+未実施）。
+
 ## 対象エリアの拡張
 
 対応エリアは `src/lib/regions.ts` の `SUPPORTED_AREAS` で管理しています。全国対応する場合はここに都道府県・市区町村を追加するだけでよく、検索画面のセレクトやスコアリング（民泊規制レベル）は自動的にこの設定を参照します。
@@ -151,7 +188,9 @@ src/
 - SUUMO・アットホーム（一般サイト）は利用規約上、無断取得を行わない方針（詳細は`src/lib/ingestion/README.md`）
 - 新着物件のメール・Push通知の実送信（`PropertyMatch`作成までは実装済み）
 - ログイン機能（保存検索条件・通知の複数ユーザー対応）
-- 掲載状態の自動照合バッチ（外部データを定期的に再取得し、`reconcileListingStatus()`で既存物件と照合してENDED/UNKNOWNへ遷移させる処理そのもの。骨組みのみ用意済み）
+- 外部スケジューラの実際の設定（`/api/cron/daily-search`を1日1回呼ぶ仕組み自体はデプロイ先未確定のため未設定）
+- 保存検索条件への「民泊に関する条件」「最低期待利益」の追加、およびそれらを踏まえた新着マッチングの拡張
+- ユーザーごとの「探索時間」設定
 - 周辺観光地・競合民泊の実データ化（不動産情報ライブラリには該当データがないため別ソースが必要）
 - 住宅宿泊事業法の180日制限、自治体ごとの民泊規制、旅館業許可の可能性確認（実データに基づく判定）
 - AI による物件評価・民泊適性の高度な判定

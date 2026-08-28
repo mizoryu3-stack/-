@@ -13,6 +13,8 @@ export interface IngestResult {
   created: boolean;
   /** 自動統合はしていない「重複候補」として記録された件数（新規作成時のみ発生しうる） */
   duplicateCandidateCount: number;
+  /** 保存検索条件との一致により生成された PropertyMatch（通知）件数。更新時は常に0 */
+  matchCount: number;
 }
 
 /**
@@ -203,11 +205,13 @@ export async function ingestProperty(raw: RawListingInput): Promise<IngestResult
   // 新規作成（＝真の新着物件）の場合のみ、保存検索条件との照合を行う。
   // 既存物件の更新（家賃変更など）では新着通知を生成しない。
   // ベストエフォートの副次機能のため、失敗しても物件の取り込み自体は成功として扱う。
+  let matchCount = 0;
   if (result.created) {
-    await matchNewProperty(result.propertyId).catch((error: unknown) => {
+    matchCount = await matchNewProperty(result.propertyId).catch((error: unknown) => {
       console.warn("保存検索条件との照合中に予期しないエラーが発生しました:", error);
+      return 0;
     });
   }
 
-  return { ...result, duplicateCandidateCount: duplicateCandidates.length };
+  return { ...result, duplicateCandidateCount: duplicateCandidates.length, matchCount };
 }

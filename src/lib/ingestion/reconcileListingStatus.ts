@@ -1,20 +1,22 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * 【未接続】掲載状態の自動照合処理の骨組み。
+ * 掲載状態の自動照合処理。
  *
- * 想定しているフロー（実際の自動実行バッチ・cron等は未実装）:
- *   外部データ取得 → 既存物件と照合 → 掲載中なら lastSeenAt 更新
- *                                    → 一定期間確認できなければ ENDED または UNKNOWN
+ * `src/lib/ingestion/runDailySearch.ts`（日次自動探索、`/api/cron/daily-search`から呼ばれる）
+ * から、pull型ソースごとに1回ずつ呼び出される:
+ *   ソースから取得 → ingestProperty()で取込（見えた物件はlastSeenAt等が自動更新される）
+ *                  → reconcileListingStatus(source, 今回見えたexternalIdの一覧)
+ *                  → このソースで見えなくなった物件をUNKNOWNへ
  *
- * 使い方のイメージ（将来、外部ソースのバッチ取込が実装されたら）:
- * ```ts
- * const listings = await fetchSuumoListings(); // 例: 将来のアダプタ
- * for (const listing of listings) {
- *   await ingestProperty(listing); // ここで lastSeenAt 等は自動更新される
- * }
- * await reconcileListingStatus("suumo", listings.map((l) => l.externalId).filter(Boolean));
- * ```
+ * 現時点では PROVIDER_REGISTRY に connected:true な pull型ソースが存在しないため、
+ * 実運用でこの関数が呼ばれることはまだない（ロジック自体はいつでも呼び出し可能な状態）。
+ *
+ * 意図的に単純な実装に留めている点（STEP7以降、実際の運用規模に応じて見直す想定）:
+ *  - ENDEDへの格上げ（何回連続で見つからなかったら確定とするか等）は行わず、UNKNOWNへの
+ *    遷移のみ行う。
+ *  - `notIn: seenExternalIds` はソースの物件数が大きくなるとSQLが肥大化しうるが、
+ *    現状の規模（プロトタイプ・実データソース0件）では問題にならないため対応していない。
  *
  * externalId を持たない手入力データ(source = "manual")は対象外
  * （そもそも自動照合の対象になり得ないため）。

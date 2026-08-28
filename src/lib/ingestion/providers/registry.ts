@@ -1,3 +1,7 @@
+import type { RawListingInput } from "@/lib/ingestion/types";
+import { fetchHomesListings } from "@/lib/ingestion/sources/homes";
+import { fetchAkiyabankListings } from "@/lib/ingestion/sources/akiyabank";
+
 /**
  * 物件データ提供元（Provider）のレジストリ。
  *
@@ -15,6 +19,12 @@
  * kind:
  *  - "push": データが外部から持ち込まれる（CSVアップロード・管理画面での手動入力）
  *  - "pull": こちらから能動的にデータを取得しに行く（外部API・スクレイピング等）
+ *
+ * fetch: kind:"pull" のソースが日次自動探索(src/lib/ingestion/runDailySearch.ts)から
+ * 呼び出される取得関数。あらかじめ関数の参照だけ登録しておくことで、将来ソースが
+ * 正式接続された際（sources/xxx.ts の実装 → ここで connected:true に変更するだけ）に
+ * runDailySearch.ts 側のコードを一切変更せずに対象へ加われるようにしている。
+ * push型ソース（CSV・管理画面）はユーザー操作起点のため対象外＝fetchは持たない。
  */
 export type ProviderKind = "push" | "pull";
 
@@ -26,6 +36,8 @@ export interface ProviderInfo {
   /** 実際にデータの投入・取得が可能な状態か */
   connected: boolean;
   description: string;
+  /** kind:"pull" のソースのみ。呼び出すと RawListingInput[] を返す取得関数 */
+  fetch?: () => Promise<RawListingInput[]>;
 }
 
 export const PROVIDER_REGISTRY: ProviderInfo[] = [
@@ -56,6 +68,7 @@ export const PROVIDER_REGISTRY: ProviderInfo[] = [
     kind: "pull",
     connected: false,
     description: "正式な利用許諾契約が締結されるまで未接続（src/lib/ingestion/sources/homes.ts）。",
+    fetch: fetchHomesListings,
   },
   {
     id: "akiyabank",
@@ -64,9 +77,19 @@ export const PROVIDER_REGISTRY: ProviderInfo[] = [
     connected: false,
     description:
       "広島県・各市からのデータ提供合意が得られるまで未接続（src/lib/ingestion/sources/akiyabank.ts）。",
+    fetch: fetchAkiyabankListings,
   },
 ];
 
 export function findProviderInfo(sourceId: string): ProviderInfo | undefined {
   return PROVIDER_REGISTRY.find((p) => p.id === sourceId);
+}
+
+/**
+ * 日次自動探索(runDailySearch.ts)の対象になる「接続済みのpull型ソース」だけを返す。
+ * 現時点では homes/akiyabank とも connected:false のため、常に空配列を返す
+ * （＝実データソースが0件でも日次探索は正常終了する設計になっている）。
+ */
+export function getConnectedPullProviders(): ProviderInfo[] {
+  return PROVIDER_REGISTRY.filter((p) => p.kind === "pull" && p.connected && p.fetch);
 }

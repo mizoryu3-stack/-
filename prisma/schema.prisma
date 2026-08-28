@@ -18,7 +18,9 @@ enum BuildingType {
 // 物件の掲載状態。将来、外部データを定期的に再取得して既存物件と照合し、
 //   確認できた → ACTIVE（lastSeenAt/lastCheckedAt更新）
 //   一定期間確認できない → ENDED または UNKNOWN
-// と遷移させる想定（自動照合処理そのものは未実装。src/lib/ingestion/reconcileListingStatus.ts 参照）。
+// と遷移させる想定。自動照合処理自体はsrc/lib/ingestion/reconcileListingStatus.tsに実装済みで、
+// 日次自動探索(src/lib/ingestion/runDailySearch.ts)から呼ばれる（実データソースが0件のため
+// 現時点では実運用で発火しない）。
 enum ListingStatus {
   ACTIVE // 掲載中
   ENDED // 掲載終了（確認の結果、掲載が終了したと判断したもの）
@@ -202,6 +204,65 @@ model ImportBatch {
   // 行単位のエラー一覧をJSON文字列として保存: [{ "row": 3, "message": "家賃が不正です" }, ...]
   errorsJson              String?
   createdAt               DateTime @default(now())
+}
+
+enum SearchRunStatus {
+  RUNNING // 実行中
+  COMPLETED // 完了（対象ソース0件、または全ソース成功／一部ソース失敗を含む）
+  FAILED // 全ソースが失敗した、またはオーケストレーション自体が予期せず失敗した
+}
+
+enum SearchRunSourceStatus {
+  SUCCEEDED // このソースの取得・取込処理は最後まで完了した（個々の行のエラーは別途errorCountで管理）
+  FAILED // このソースの取得・取込処理自体が例外で中断した（他ソースの処理は継続する）
+}
+
+// 日次自動探索（STEP1: /api/cron/daily-search）1回分の実行記録。
+//
+// ImportBatchは「CSVファイル1つのアップロード」専用の監査ログのため転用せず、
+// 複数ソースを横断する日次実行はこちらに記録する。1回のSearchRunに対し、
+// 対象ソースごとの内訳を SearchRunSource として保持する。
+//
+// 現時点では PROVIDER_REGISTRY に connected:true な pull型ソースが存在しないため、
+// sourceCount=0・status=COMPLETED のレコードのみが作られる想定（src/lib/ingestion/
+// runDailySearch.ts 参照）。実データソースが接続され次第、自然に内訳が埋まっていく。
+model SearchRun {
+  id         Int             @id @default(autoincrement())
+  startedAt  DateTime        @default(now())
+  finishedAt DateTime?
+  status     SearchRunStatus @default(RUNNING)
+
+  sourceCount      Int @default(0) // 対象になったソース数（connected:true && kind:"pull"）
+  succeededSources Int @default(0)
+  failedSources    Int @default(0)
+
+  fetchedCount Int @default(0) // 全ソース合計の取得件数
+  createdCount Int @default(0) // 新着（新規作成）件数
+  updatedCount Int @default(0) // 既存物件の更新件数
+  errorCount   Int @default(0) // バリデーション/取込に失敗した行数
+  matchCount   Int @default(0) // 生成されたPropertyMatch（通知）件数
+
+  sources SearchRunSource[]
+}
+
+// SearchRun のうち、1ソース分の実行内訳。
+model SearchRunSource {
+  id          Int       @id @default(autoincrement())
+  searchRunId Int
+  searchRun   SearchRun @relation(fields: [searchRunId], references: [id], onDelete: Cascade)
+
+  source       String // PROVIDER_REGISTRYのid（例: "homes"）
+  status       SearchRunSourceStatus
+  errorMessage String? // status=FAILEDの場合の例外メッセージ
+
+  fetchedCount       Int @default(0)
+  createdCount       Int @default(0)
+  updatedCount       Int @default(0)
+  errorCount         Int @default(0)
+  matchCount         Int @default(0)
+  markedUnknownCount Int @default(0) // reconcileListingStatus()でUNKNOWNへ遷移した件数
+
+  createdAt DateTime @default(now())
 }
 
 // 収益シミュレーションの「初期値・保存された編集値」
