@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Prisma } from "@/generated/prisma/client";
 import PropertyCard from "@/components/PropertyCard";
 import SearchFilters from "@/components/SearchFilters";
@@ -5,6 +6,7 @@ import ActiveFilterChips from "@/components/ActiveFilterChips";
 import { prisma } from "@/lib/prisma";
 import { computeDefaultSimulation } from "@/lib/propertySimulation";
 import { describeFilters, buildRemoveParamHref } from "@/lib/filterChips";
+import { buildPropertyWhere } from "@/lib/propertyQuery";
 import { SORT_OPTIONS, type SearchFilters as SearchFiltersType, type SortValue } from "@/lib/types";
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -48,42 +50,23 @@ function parseFilters(params: RawSearchParams): SearchFiltersType {
 function buildWhere(filters: SearchFiltersType): Prisma.PropertyWhereInput {
   // 掲載終了(ENDED)の物件は通常の検索結果には表示しない。
   // UNKNOWN（自動照合で未確認）はまだ「終了」と確定していないため表示対象に含める。
-  const where: Prisma.PropertyWhereInput = { listingStatus: { not: "ENDED" } };
+  // 条件そのもの（家賃・面積・駅距離等）の判定ロジックは保存検索条件のマッチングとも
+  // 共有しているため src/lib/propertyQuery.ts に集約している。
+  return { ...buildPropertyWhere(filters), listingStatus: { not: "ENDED" } };
+}
 
-  if (filters.city) {
-    where.city = filters.city;
-  }
-  if (filters.rentMax !== undefined && !Number.isNaN(filters.rentMax)) {
-    where.rent = { lte: filters.rentMax };
-  }
-  if (filters.buildingType) {
-    where.buildingType = filters.buildingType;
-  }
-  if (filters.layout) {
-    where.layout = filters.layout;
-  }
-  if (filters.areaSqmMin !== undefined && !Number.isNaN(filters.areaSqmMin)) {
-    where.areaSqm = { gte: filters.areaSqmMin };
-  }
-  if (filters.maxAge !== undefined && !Number.isNaN(filters.maxAge)) {
-    // 築年数上限 → 築年（西暦）の下限に変換
-    const minBuiltYear = new Date().getFullYear() - filters.maxAge;
-    where.builtYear = { gte: minBuiltYear };
-  }
-  if (filters.stationWalkMax !== undefined && !Number.isNaN(filters.stationWalkMax)) {
-    where.stationWalkMin = { lte: filters.stationWalkMax };
-  }
-  if (filters.hasParking !== undefined) {
-    where.hasParking = filters.hasParking;
-  }
-  if (filters.depositMax !== undefined && !Number.isNaN(filters.depositMax)) {
-    where.deposit = { lte: filters.depositMax };
-  }
-  if (filters.keyMoneyMax !== undefined && !Number.isNaN(filters.keyMoneyMax)) {
-    where.keyMoney = { lte: filters.keyMoneyMax };
-  }
-
-  return where;
+// 現在の検索条件のうち、保存検索条件(SavedSearch)が対応する項目だけを
+// クエリ文字列にして /saved-searches/new に引き継ぐ（フォームの初期値に使う）。
+function buildSavedSearchQuery(filters: SearchFiltersType): string {
+  const params = new URLSearchParams();
+  if (filters.city) params.set("city", filters.city);
+  if (filters.rentMax !== undefined) params.set("rentMax", String(filters.rentMax));
+  if (filters.buildingType) params.set("buildingType", filters.buildingType);
+  if (filters.areaSqmMin !== undefined) params.set("areaSqmMin", String(filters.areaSqmMin));
+  if (filters.maxAge !== undefined) params.set("maxAge", String(filters.maxAge));
+  if (filters.stationWalkMax !== undefined) params.set("stationWalkMax", String(filters.stationWalkMax));
+  if (filters.hasParking) params.set("hasParking", "true");
+  return params.toString();
 }
 
 function sortOrderBy(sort: SortValue): Prisma.PropertyOrderByWithRelationInput | undefined {
@@ -157,8 +140,14 @@ export default async function Home({
       */}
       <SearchFilters key={JSON.stringify(filters)} filters={filters} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-500">{properties.length}件の物件が見つかりました</p>
+        <Link
+          href={`/saved-searches/new?${buildSavedSearchQuery(filters)}`}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          🔔 この条件を保存して新着通知を受け取る
+        </Link>
       </div>
 
       {properties.length === 0 ? (

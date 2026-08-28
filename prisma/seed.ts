@@ -10,6 +10,10 @@ async function main() {
   console.log("Seeding database...");
 
   await prisma.favorite.deleteMany();
+  // PropertyMatch(通知データ)は再シードのたびに作り直される物件に紐づくため、
+  // 古い物件を指したままにならないよう一旦クリアする。保存検索条件(SavedSearch)自体は
+  // ユーザーが設定した「検索条件の定義」であり、データセットの入れ替えとは無関係なので残す。
+  await prisma.propertyMatch.deleteMany();
   await prisma.competitorListing.deleteMany();
   await prisma.nearbyAttraction.deleteMany();
   await prisma.simulationInput.deleteMany();

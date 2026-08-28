@@ -5,20 +5,42 @@ import { formatRelativeTime, listingStatusLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
 export default async function AdminDashboardPage() {
-  const [total, statusGroups, sourceGroups, pendingDuplicates, recentBatches, oldestChecked] =
-    await Promise.all([
-      prisma.property.count(),
-      prisma.property.groupBy({ by: ["listingStatus"], _count: { _all: true } }),
-      prisma.property.groupBy({ by: ["source"], _count: { _all: true } }),
-      prisma.duplicateCandidate.count({ where: { status: "PENDING" } }),
-      prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
-      prisma.property.findFirst({
-        where: { listingStatus: "ACTIVE" },
-        orderBy: { lastCheckedAt: "asc" },
-        select: { lastCheckedAt: true },
-      }),
-    ]);
+  const sevenDaysAgo = daysAgo(7);
+
+  const [
+    total,
+    statusGroups,
+    sourceGroups,
+    pendingDuplicates,
+    recentBatches,
+    oldestChecked,
+    newPropertiesLast7Days,
+    savedSearchTotal,
+    savedSearchEnabled,
+    matchTotal,
+    unreadNotifications,
+  ] = await Promise.all([
+    prisma.property.count(),
+    prisma.property.groupBy({ by: ["listingStatus"], _count: { _all: true } }),
+    prisma.property.groupBy({ by: ["source"], _count: { _all: true } }),
+    prisma.duplicateCandidate.count({ where: { status: "PENDING" } }),
+    prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
+    prisma.property.findFirst({
+      where: { listingStatus: "ACTIVE" },
+      orderBy: { lastCheckedAt: "asc" },
+      select: { lastCheckedAt: true },
+    }),
+    prisma.property.count({ where: { firstSeenAt: { gte: sevenDaysAgo } } }),
+    prisma.savedSearch.count(),
+    prisma.savedSearch.count({ where: { enabled: true } }),
+    prisma.propertyMatch.count(),
+    prisma.propertyMatch.count({ where: { readAt: null } }),
+  ]);
 
   const statusCounts: Record<string, number> = { ACTIVE: 0, ENDED: 0, UNKNOWN: 0 };
   for (const g of statusGroups) statusCounts[g.listingStatus] = g._count._all;
@@ -77,6 +99,38 @@ export default async function AdminDashboardPage() {
             </div>
           </dl>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-700">新着物件・通知</h2>
+        <dl className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-5">
+          <div>
+            <dt className="text-slate-400">新規登録（7日以内）</dt>
+            <dd className="font-semibold text-slate-800">{newPropertiesLast7Days}件</dd>
+          </div>
+          <div>
+            <dt className="text-slate-400">
+              <Link href="/saved-searches" className="hover:underline">
+                保存検索条件
+              </Link>
+            </dt>
+            <dd className="font-semibold text-slate-800">
+              {savedSearchEnabled}/{savedSearchTotal}件 有効
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-400">累計マッチ数</dt>
+            <dd className="font-semibold text-slate-800">{matchTotal}件</dd>
+          </div>
+          <div>
+            <dt className="text-slate-400">
+              <Link href="/notifications" className="hover:underline">
+                未読通知
+              </Link>
+            </dt>
+            <dd className="font-semibold text-slate-800">{unreadNotifications}件</dd>
+          </div>
+        </dl>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

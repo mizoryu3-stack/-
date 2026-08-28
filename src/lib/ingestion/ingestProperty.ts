@@ -4,6 +4,7 @@ import { getRegulationLevel } from "@/lib/regions";
 import { fetchPublicDataForProperty } from "@/lib/publicData/enrichProperty";
 import { unavailablePublicDataResult } from "@/lib/publicData/types";
 import { findConfidentMatch, findDuplicateCandidates } from "@/lib/ingestion/duplicateDetection";
+import { matchNewProperty } from "@/lib/notifications/matchSavedSearches";
 import type { RawListingInput } from "@/lib/ingestion/types";
 
 export interface IngestResult {
@@ -194,6 +195,15 @@ export async function ingestProperty(raw: RawListingInput): Promise<IngestResult
 
     return { propertyId: property.id, created: !existing };
   });
+
+  // 新規作成（＝真の新着物件）の場合のみ、保存検索条件との照合を行う。
+  // 既存物件の更新（家賃変更など）では新着通知を生成しない。
+  // ベストエフォートの副次機能のため、失敗しても物件の取り込み自体は成功として扱う。
+  if (result.created) {
+    await matchNewProperty(result.propertyId).catch((error: unknown) => {
+      console.warn("保存検索条件との照合中に予期しないエラーが発生しました:", error);
+    });
+  }
 
   return { ...result, duplicateCandidateCount: duplicateCandidates.length };
 }

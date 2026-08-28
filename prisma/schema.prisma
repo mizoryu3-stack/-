@@ -80,6 +80,7 @@ model Property {
   // 重複候補: このPropertyが「新規取込側」として記録した候補、および「既存の類似物件側」として記録された候補
   duplicatesAsNew      DuplicateCandidate[] @relation("DuplicateCandidateProperty")
   duplicatesAsExisting DuplicateCandidate[] @relation("DuplicateCandidateOf")
+  propertyMatches      PropertyMatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -207,4 +208,55 @@ model Favorite {
   propertyId Int      @unique
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
+}
+
+// 保存検索条件。
+//
+// フィールド名は検索画面(src/lib/types.ts の SearchFilters)の絞り込み条件と意図的に
+// 揃えてあり、src/lib/propertyQuery.ts の buildPropertyWhere() を検索画面・新着マッチング
+// 判定の両方から共通で呼び出せるようにしている（ロジックの二重管理を避けるため）。
+//
+// 認証機能は未実装のため userId は固定値("default-user")を既定値として使う。
+// 将来ログイン機能を追加する際、この値を実際のユーザーIDに差し替えるだけで移行できる。
+model SavedSearch {
+  id      Int     @id @default(autoincrement())
+  userId  String  @default("default-user")
+  name    String // 例:「廿日市・戸建て・8万円以下」
+  enabled Boolean @default(true) // ON/OFFの切り替え
+
+  city           String? // エリア
+  rentMax        Int? // 家賃上限
+  buildingType   BuildingType? // 戸建て/マンション（nullは指定なし）
+  areaSqmMin     Float? // 専有面積下限
+  maxAge         Int? // 築年数上限
+  stationWalkMax Int? // 駅徒歩上限
+  hasParking     Boolean? // true=駐車場必須。null/falseは指定なし
+
+  matches PropertyMatch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 「新着物件」が「保存検索条件」に一致したことを記録するテーブル。
+// このレコード自体が通知データを兼ねる（readAtが null=未読、日時あり=既読）。
+//
+// 一致判定は物件が新規作成された（ingestProperty()のcreated===true）ときのみ行う。
+// 既存物件の更新（家賃変更など）では作成されない。
+//
+// 将来の自動化（CSV/APIから取込 → 新規物件判定 → 保存検索条件と照合 → PropertyMatch作成
+// → メール/Push通知）に備え、この時点でメール・Push送信は行わず、レコード作成のみ行う。
+model PropertyMatch {
+  id            Int         @id @default(autoincrement())
+  userId        String // 通知の宛先（SavedSearch.userIdと同じ値）
+  propertyId    Int
+  property      Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  savedSearchId Int
+  savedSearch   SavedSearch @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime? // 既読日時（未読の場合はnull）
+
+  // 同じ物件×同じ保存検索条件の組み合わせで重複通知が生成されないようにするための制約
+  @@unique([propertyId, savedSearchId])
 }
