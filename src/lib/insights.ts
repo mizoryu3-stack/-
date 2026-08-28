@@ -1,4 +1,5 @@
-import type { WorkoutSession } from "./types";
+import type { BodyFocus, WorkoutSession } from "./types";
+import { BODY_FOCUS_LABEL } from "./types";
 
 /** 種目名からおおまかな部位を推定するための簡易辞書。 */
 const CATEGORY_KEYWORDS: Array<{ category: string; keywords: string[] }> = [
@@ -65,6 +66,10 @@ export function categorizeExercise(exerciseName: string): string {
   return found?.category ?? "その他";
 }
 
+/** 上半身・下半身の判定に使う部位カテゴリの分類。「体幹」「その他」はどちらにも属さない中立扱い。 */
+const UPPER_CATEGORIES = ["胸", "背中", "肩", "腕"];
+const LOWER_CATEGORIES = ["脚"];
+
 export interface ExerciseAggregate {
   exerciseName: string;
   volume: number;
@@ -86,8 +91,8 @@ export function aggregateByExercise(
       topWeightReps: 0,
       setCount: 0,
     };
-    current.volume += set.weightKg * set.reps;
-    current.setCount += 1;
+    current.volume += set.weightKg * set.reps * set.setCount;
+    current.setCount += set.setCount;
     if (
       set.weightKg > current.topWeightKg ||
       (set.weightKg === current.topWeightKg && set.reps > current.topWeightReps)
@@ -101,14 +106,18 @@ export function aggregateByExercise(
 }
 
 export function sessionVolume(session: WorkoutSession): number {
-  return session.sets.reduce((sum, s) => sum + s.weightKg * s.reps, 0);
+  return session.sets.reduce((sum, s) => sum + s.weightKg * s.reps * s.setCount, 0);
+}
+
+/** セッション全体の実施セット数 (各行のsetCountの合計)。 */
+export function totalSetCount(session: WorkoutSession): number {
+  return session.sets.reduce((sum, s) => sum + s.setCount, 0);
 }
 
 function averageReps(session: WorkoutSession): number {
-  if (session.sets.length === 0) return 0;
-  return (
-    session.sets.reduce((sum, s) => sum + s.reps, 0) / session.sets.length
-  );
+  const sets = totalSetCount(session);
+  if (sets === 0) return 0;
+  return session.sets.reduce((sum, s) => sum + s.reps * s.setCount, 0) / sets;
 }
 
 /** 直近7日以内など、指定日より前のセッションを新しい順に返す。 */
@@ -146,7 +155,7 @@ export function estimateCalories(session: WorkoutSession): CalorieEstimate {
 
   let durationMinutes = session.durationMinutes;
   if (!durationMinutes || durationMinutes <= 0) {
-    durationMinutes = Math.max(session.sets.length, 1) * 3;
+    durationMinutes = Math.max(totalSetCount(session), 1) * 3;
     assumptions.push(
       `トレーニング時間が未入力のため、1セットあたり3分として概算 (${durationMinutes}分)`,
     );
@@ -176,6 +185,7 @@ export interface ExerciseComparison {
   volumeChangePct: number | null;
   topWeightKg: number;
   previousTopWeightKg: number | null;
+  setCount: number;
   isStagnant: boolean;
 }
 
@@ -188,6 +198,61 @@ export interface SessionReview {
   comparisons: ExerciseComparison[];
   categoriesTrained: string[];
   suggestions: string[];
+  focusEvaluation: string | null;
+}
+
+/** 選択された「トレーニング種別 (上半身/下半身/全身)」に沿った内容だったかを毎回自動評価する。 */
+export function evaluateBodyFocus(
+  bodyFocus: BodyFocus | undefined,
+  categoriesTrained: string[],
+): string | null {
+  if (!bodyFocus) return null;
+
+  const upperCats = categoriesTrained.filter((c) => UPPER_CATEGORIES.includes(c));
+  const lowerCats = categoriesTrained.filter((c) => LOWER_CATEGORIES.includes(c));
+  const label = BODY_FOCUS_LABEL[bodyFocus];
+
+  if (bodyFocus === "upper") {
+    if (lowerCats.length > 0) {
+      return `「${label}」の日として記録されていますが、${lowerCats.join(
+        "・",
+      )}の種目も含まれています。上半身に絞るか、種別を「全身」に変更しても良いかもしれません。`;
+    }
+    if (upperCats.length === 0) {
+      return `「${label}」の日として記録されていますが、上半身の種目が見当たりません。種目名を確認してみましょう。`;
+    }
+    if (upperCats.length === 1) {
+      const missing = UPPER_CATEGORIES.filter((c) => c !== upperCats[0]);
+      return `${upperCats[0]}中心の上半身デーでした。次回は${missing.join(
+        "・",
+      )}なども加えるとバランスが良くなります。`;
+    }
+    return `${upperCats.join("・")}と、上半身をバランスよく鍛えられた1日でした。`;
+  }
+
+  if (bodyFocus === "lower") {
+    if (upperCats.length > 0) {
+      return `「${label}」の日として記録されていますが、${upperCats.join(
+        "・",
+      )}の種目も含まれています。下半身に絞るか、種別を「全身」に変更しても良いかもしれません。`;
+    }
+    if (lowerCats.length === 0) {
+      return `「${label}」の日として記録されていますが、脚の種目が見当たりません。スクワットなど脚種目の名前を確認してみましょう。`;
+    }
+    return "しっかり下半身を追い込めた1日でした。";
+  }
+
+  // full (全身)
+  if (upperCats.length > 0 && lowerCats.length > 0) {
+    return "上半身・下半身ともに種目が入っており、全身をバランスよく鍛えられました。";
+  }
+  if (upperCats.length > 0 && lowerCats.length === 0) {
+    return "「全身」の日として記録されていますが、上半身の種目に偏っています。次回は脚の種目も加えてみましょう。";
+  }
+  if (lowerCats.length > 0 && upperCats.length === 0) {
+    return "「全身」の日として記録されていますが、下半身の種目に偏っています。次回は上半身の種目も加えてみましょう。";
+  }
+  return `「${label}」の日として記録されました。`;
 }
 
 /** 保存されたセッションと過去の記録から、総評・比較・改善提案を組み立てる。 */
@@ -247,6 +312,7 @@ export function buildSessionReview(
           : null,
       topWeightKg: agg.topWeightKg,
       previousTopWeightKg: prevAgg ? prevAgg.topWeightKg : null,
+      setCount: agg.setCount,
       isStagnant,
     };
   });
@@ -334,6 +400,7 @@ export function buildSessionReview(
     comparisons,
     categoriesTrained,
     suggestions,
+    focusEvaluation: evaluateBodyFocus(session.bodyFocus, categoriesTrained),
   };
 }
 

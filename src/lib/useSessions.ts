@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { generateId, loadSessions, saveSessions } from "./storage";
-import type { SetEntry, WorkoutSession } from "./types";
+import type { BodyFocus, SetEntry, WorkoutSession } from "./types";
 
 export interface DraftSession {
   date: string;
   durationMinutes?: number;
   bodyWeightKg?: number;
+  bodyFocus?: BodyFocus;
   memo?: string;
   sets: Array<Omit<SetEntry, "id">>;
 }
@@ -32,6 +33,7 @@ export function useSessions() {
       date: draft.date,
       durationMinutes: draft.durationMinutes,
       bodyWeightKg: draft.bodyWeightKg,
+      bodyFocus: draft.bodyFocus,
       memo: draft.memo,
       sets: draft.sets.map((s) => ({ ...s, id: generateId() })),
       createdAt: now,
@@ -51,6 +53,7 @@ export function useSessions() {
                 date: draft.date,
                 durationMinutes: draft.durationMinutes,
                 bodyWeightKg: draft.bodyWeightKg,
+                bodyFocus: draft.bodyFocus,
                 memo: draft.memo,
                 sets: draft.sets.map((set) => ({
                   ...set,

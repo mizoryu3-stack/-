@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { SessionStore } from "../lib/useSessions";
 import { buildSessionReview } from "../lib/insights";
 import { formatDateJp, formatSigned } from "../lib/format";
+import { BODY_FOCUS_LABEL } from "../lib/types";
 
 export default function SessionDetail({ store }: { store: SessionStore }) {
   const { id } = useParams();
@@ -32,7 +33,10 @@ export default function SessionDetail({ store }: { store: SessionStore }) {
   return (
     <div>
       <div className="top-actions">
-        <h2 style={{ margin: 0 }}>{formatDateJp(session.date)}</h2>
+        <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          {formatDateJp(session.date)}
+          {session.bodyFocus && <span className="pill">{BODY_FOCUS_LABEL[session.bodyFocus]}</span>}
+        </h2>
         <div style={{ display: "flex", gap: 8 }}>
           <Link to={`/sessions/${session.id}/edit`} className="btn">
             編集
@@ -72,6 +76,13 @@ export default function SessionDetail({ store }: { store: SessionStore }) {
         )}
       </div>
 
+      {review.focusEvaluation && (
+        <div className="card">
+          <h2>{session.bodyFocus && BODY_FOCUS_LABEL[session.bodyFocus]}デーの評価</h2>
+          <p style={{ margin: 0 }}>{review.focusEvaluation}</p>
+        </div>
+      )}
+
       <div className="card">
         <h2>種目別・前回との比較</h2>
         <div style={{ overflowX: "auto" }}>
@@ -80,6 +91,7 @@ export default function SessionDetail({ store }: { store: SessionStore }) {
               <tr>
                 <th>種目</th>
                 <th>最高重量</th>
+                <th>セット数</th>
                 <th>ボリューム</th>
                 <th>前回比</th>
               </tr>
@@ -89,6 +101,7 @@ export default function SessionDetail({ store }: { store: SessionStore }) {
                 <tr key={c.exerciseName}>
                   <td>{c.exerciseName}</td>
                   <td>{c.topWeightKg}kg</td>
+                  <td>{c.setCount}</td>
                   <td>{Math.round(c.volume)}kg</td>
                   <td>
                     {c.volumeChangePct === null ? (

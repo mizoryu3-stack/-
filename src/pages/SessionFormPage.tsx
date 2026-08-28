@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { SessionStore } from "../lib/useSessions";
-import type { NewSetInput } from "../lib/types";
+import type { BodyFocus, NewSetInput } from "../lib/types";
+import { BODY_FOCUS_LABEL } from "../lib/types";
 import { todayStr } from "../lib/format";
+import Stepper from "../components/Stepper";
 
 interface Props {
   store: SessionStore;
@@ -13,6 +15,8 @@ interface SetRow extends NewSetInput {
   key: string;
 }
 
+const BODY_FOCUS_OPTIONS: BodyFocus[] = ["upper", "lower", "full"];
+
 let rowKeySeq = 0;
 function nextRowKey() {
   rowKeySeq += 1;
@@ -20,7 +24,7 @@ function nextRowKey() {
 }
 
 function emptyRow(exerciseName = ""): SetRow {
-  return { key: nextRowKey(), exerciseName, weightKg: 0, reps: 10 };
+  return { key: nextRowKey(), exerciseName, weightKg: 0, reps: 10, setCount: 3 };
 }
 
 export default function SessionFormPage({ store, mode }: Props) {
@@ -35,10 +39,17 @@ export default function SessionFormPage({ store, mode }: Props) {
   const [bodyWeightKg, setBodyWeightKg] = useState<string>(
     existing?.bodyWeightKg ? String(existing.bodyWeightKg) : "",
   );
+  const [bodyFocus, setBodyFocus] = useState<BodyFocus | undefined>(existing?.bodyFocus);
   const [memo, setMemo] = useState(existing?.memo ?? "");
   const [rows, setRows] = useState<SetRow[]>(
     existing && existing.sets.length > 0
-      ? existing.sets.map((s) => ({ key: nextRowKey(), exerciseName: s.exerciseName, weightKg: s.weightKg, reps: s.reps }))
+      ? existing.sets.map((s) => ({
+          key: nextRowKey(),
+          exerciseName: s.exerciseName,
+          weightKg: s.weightKg,
+          reps: s.reps,
+          setCount: s.setCount,
+        }))
       : [emptyRow()],
   );
 
@@ -77,7 +88,12 @@ export default function SessionFormPage({ store, mode }: Props) {
     e.preventDefault();
     const sets: NewSetInput[] = rows
       .filter((r) => r.exerciseName.trim() !== "" && r.reps > 0)
-      .map((r) => ({ exerciseName: r.exerciseName.trim(), weightKg: r.weightKg, reps: r.reps }));
+      .map((r) => ({
+        exerciseName: r.exerciseName.trim(),
+        weightKg: r.weightKg,
+        reps: r.reps,
+        setCount: Math.max(1, r.setCount),
+      }));
 
     if (sets.length === 0) return;
 
@@ -85,6 +101,7 @@ export default function SessionFormPage({ store, mode }: Props) {
       date,
       durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
       bodyWeightKg: bodyWeightKg ? Number(bodyWeightKg) : undefined,
+      bodyFocus,
       memo: memo.trim() || undefined,
       sets,
     };
@@ -133,6 +150,22 @@ export default function SessionFormPage({ store, mode }: Props) {
             onChange={(e) => setBodyWeightKg(e.target.value)}
           />
         </div>
+
+        <div className="field-row">
+          <label>トレーニング種別 (任意) - 選ぶと種別に応じた評価を表示します</label>
+          <div className="segmented">
+            {BODY_FOCUS_OPTIONS.map((focus) => (
+              <button
+                key={focus}
+                type="button"
+                className={bodyFocus === focus ? "segmented-btn active" : "segmented-btn"}
+                onClick={() => setBodyFocus(bodyFocus === focus ? undefined : focus)}
+              >
+                {BODY_FOCUS_LABEL[focus]}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="card">
@@ -158,23 +191,31 @@ export default function SessionFormPage({ store, mode }: Props) {
               />
             </div>
             <div className="set-row-bottom">
-              <input
-                type="number"
-                step="0.5"
+              <Stepper
+                ariaLabel="重量"
+                step={5}
                 min={0}
-                placeholder="重量"
                 value={row.weightKg}
-                onChange={(e) => updateRow(row.key, { weightKg: Number(e.target.value) })}
+                onChange={(v) => updateRow(row.key, { weightKg: v })}
               />
               <span className="unit">kg</span>
-              <input
-                type="number"
+              <Stepper
+                ariaLabel="回数"
+                step={5}
                 min={1}
-                placeholder="回数"
                 value={row.reps}
-                onChange={(e) => updateRow(row.key, { reps: Number(e.target.value) })}
+                onChange={(v) => updateRow(row.key, { reps: v })}
               />
               <span className="unit">回</span>
+              <Stepper
+                ariaLabel="セット数"
+                step={1}
+                min={1}
+                max={20}
+                value={row.setCount}
+                onChange={(v) => updateRow(row.key, { setCount: v })}
+              />
+              <span className="unit">セット</span>
               <button
                 type="button"
                 className="set-row-icon-btn"

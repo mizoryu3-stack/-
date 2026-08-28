@@ -171,8 +171,7 @@
   padding: 6px 10px;
 }
 
-.set-row-top input[type="text"],
-.set-row-bottom input[type="number"] {
+.set-row-top input[type="text"] {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -185,18 +184,81 @@
   gap: 4px;
   flex-wrap: wrap;
   padding-left: 26px;
-}
-
-.set-row-bottom input[type="number"] {
-  width: 4.2em;
-  padding: 6px 8px;
-  text-align: right;
+  row-gap: 8px;
 }
 
 .set-row-bottom .unit {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
-  margin-right: 4px;
+  margin-right: 6px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  flex: none;
+}
+
+.stepper-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--series-1);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+
+.stepper-btn:active {
+  background: var(--gridline);
+}
+
+.stepper-input {
+  width: 2.6em;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: center;
+  padding: 4px 0;
+  /* ネイティブのスピナー矢印は独自の+/-ボタンと重複するため非表示にする */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.stepper-input::-webkit-outer-spin-button,
+.stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segmented-btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented-btn.active {
+  background: var(--series-1);
+  border-color: transparent;
+  color: #ffffff;
 }
 
 .set-row-icon-btn {
@@ -242,6 +304,8 @@
   font-weight: 600;
   background: var(--gridline);
   color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .empty-state {
@@ -351,6 +415,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   margin-bottom: 16px;
   gap: 8px;
 }

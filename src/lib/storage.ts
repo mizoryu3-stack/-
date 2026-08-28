@@ -13,6 +13,17 @@ function isBrowserStorageAvailable(): boolean {
   }
 }
 
+/** 旧バージョン (setCountフィールド追加前) のデータを読み込んだ際に、1セットとして補完する。 */
+function normalizeSession(session: WorkoutSession): WorkoutSession {
+  return {
+    ...session,
+    sets: session.sets.map((set) => ({
+      ...set,
+      setCount: set.setCount && set.setCount > 0 ? set.setCount : 1,
+    })),
+  };
+}
+
 export function loadSessions(): WorkoutSession[] {
   if (!isBrowserStorageAvailable()) return [];
   try {
@@ -20,7 +31,7 @@ export function loadSessions(): WorkoutSession[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed as WorkoutSession[];
+    return (parsed as WorkoutSession[]).map(normalizeSession);
   } catch {
     return [];
   }
