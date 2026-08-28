@@ -17,6 +17,10 @@ export default defineConfig({
     globalSetup: ["./tests/setup/globalSetup.ts"],
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
+      // メール通知(STEP8)のテストではFakeアダプタを使う。個別のテストで一時的に
+      // process.env.EMAIL_PROVIDER を書き換える場合は、テスト内で必ず元の値に戻すこと。
+      EMAIL_PROVIDER: "fake",
+      NOTIFICATION_EMAIL_TO: "test-notify@example.com",
     },
     fileParallelism: false,
   },
