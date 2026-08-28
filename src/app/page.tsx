@@ -46,7 +46,9 @@ function parseFilters(params: RawSearchParams): SearchFiltersType {
 }
 
 function buildWhere(filters: SearchFiltersType): Prisma.PropertyWhereInput {
-  const where: Prisma.PropertyWhereInput = {};
+  // 掲載終了(ENDED)の物件は通常の検索結果には表示しない。
+  // UNKNOWN（自動照合で未確認）はまだ「終了」と確定していないため表示対象に含める。
+  const where: Prisma.PropertyWhereInput = { listingStatus: { not: "ENDED" } };
 
   if (filters.city) {
     where.city = filters.city;
@@ -108,14 +110,20 @@ export default async function Home({
   const where = buildWhere(filters);
   const orderBy = sortOrderBy(filters.sort);
 
+  // listingStatus を最優先の並び順とし（ACTIVEを先に）、その中で選択中のソートを適用する。
+  // "ACTIVE" < "UNKNOWN" のアルファベット順に依存しているため、ステータスの種類を
+  // 増やす場合はこの前提を見直すこと。
   let properties = await prisma.property.findMany({
     where,
     include: { simulationInput: true, favorite: true },
-    orderBy: orderBy ?? { minpakuScore: "desc" },
+    orderBy: [{ listingStatus: "asc" }, orderBy ?? { minpakuScore: "desc" }],
   });
 
   if (filters.sort === "profit") {
+    const statusPriority: Record<string, number> = { ACTIVE: 0, UNKNOWN: 1, ENDED: 2 };
     properties = [...properties].sort((a, b) => {
+      const statusDiff = statusPriority[a.listingStatus] - statusPriority[b.listingStatus];
+      if (statusDiff !== 0) return statusDiff;
       const profitA = computeDefaultSimulation(a)?.monthlyProfit ?? -Infinity;
       const profitB = computeDefaultSimulation(b)?.monthlyProfit ?? -Infinity;
       return profitB - profitA;

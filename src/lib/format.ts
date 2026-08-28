@@ -15,6 +15,12 @@ export const buildingTypeLabel: Record<"HOUSE" | "APARTMENT", string> = {
   APARTMENT: "マンション",
 };
 
+export const listingStatusLabel: Record<"ACTIVE" | "ENDED" | "UNKNOWN", string> = {
+  ACTIVE: "掲載中",
+  ENDED: "掲載終了",
+  UNKNOWN: "確認できません",
+};
+
 export function formatPercent(value: number, digits = 0): string {
   return `${value.toFixed(digits)}%`;
 }
@@ -26,4 +32,28 @@ export function formatPaybackPeriod(months: number): string {
   if (years === 0) return `${remainingMonths}ヶ月`;
   if (remainingMonths === 0) return `${years}年`;
   return `${years}年${remainingMonths}ヶ月`;
+}
+
+/**
+ * 日時を「3時間前」「2日前」のような相対表示に整形する。
+ * 物件の掲載状態（最終確認日時）の表示に使用。
+ */
+export function formatRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / (60 * 1000));
+
+  if (diffMinutes < 1) return "たった今";
+  if (diffMinutes < 60) return `${diffMinutes}分前`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}時間前`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}日前`;
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths}ヶ月前`;
+
+  const diffYears = Math.floor(diffMonths / 12);
+  return `${diffYears}年前`;
 }

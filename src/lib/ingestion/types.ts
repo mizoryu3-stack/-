@@ -35,11 +35,10 @@ export interface RawListingInput {
 
   /** データソース識別子。"manual" | "suumo" | "homes" | "athome" など */
   source: string;
-  /** ソース側の物件ID（重複取込防止キー）。手入力データは省略可 */
-  sourceId?: string;
+  /** 外部サイト側の物件ID（source + externalId が重複取込防止の基本キー）。手入力データは省略可。
+   *  省略した場合、掲載状態の自動照合(reconcileListingStatus)の対象にはならない。 */
+  externalId?: string;
   sourceUrl?: string;
-  /** 外部取得日時。手入力データは省略可（ingestProperty側でnull扱い） */
-  fetchedAt?: Date;
 
   /** 収益シミュレーションの初期値（省略時はrentから簡易推定） */
   simulation?: {

@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+
+// お気に入りの物件は、お気に入りボタン(Server Action)以外の経路
+// （将来の外部データ再取込・掲載状態の自動照合など）でも listingStatus 等が更新されうる。
+// 静的プリレンダリングされると新しい状態が反映されなくなるため、常に動的にレンダリングする。
+export const dynamic = "force-dynamic";
 import { computeDefaultSimulation } from "@/lib/propertySimulation";
 import type { SimulationResult } from "@/lib/simulation";
 import { buildingTypeLabel, formatYen } from "@/lib/format";
 import ScoreBadge from "@/components/ScoreBadge";
+import ListingStatusBadge from "@/components/ListingStatusBadge";
 
 export default async function FavoritesPage() {
   const favorites = await prisma.favorite.findMany({
@@ -40,6 +46,7 @@ export default async function FavoritesPage() {
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3">物件名</th>
+                <th className="px-4 py-3">掲載状況</th>
                 <th className="px-4 py-3">エリア</th>
                 <th className="px-4 py-3">種別</th>
                 <th className="px-4 py-3">家賃</th>
@@ -56,6 +63,9 @@ export default async function FavoritesPage() {
                     <Link href={`/properties/${property.id}`} className="hover:underline">
                       {property.name}
                     </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <ListingStatusBadge status={property.listingStatus} size="sm" />
                   </td>
                   <td className="px-4 py-3 text-slate-600">{property.city}</td>
                   <td className="px-4 py-3 text-slate-600">

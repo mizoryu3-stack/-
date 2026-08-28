@@ -15,6 +15,16 @@ enum BuildingType {
   APARTMENT // マンション
 }
 
+// 物件の掲載状態。将来、外部データを定期的に再取得して既存物件と照合し、
+//   確認できた → ACTIVE（lastSeenAt/lastCheckedAt更新）
+//   一定期間確認できない → ENDED または UNKNOWN
+// と遷移させる想定（自動照合処理そのものは未実装。src/lib/ingestion/reconcileListingStatus.ts 参照）。
+enum ListingStatus {
+  ACTIVE // 掲載中
+  ENDED // 掲載終了（確認の結果、掲載が終了したと判断したもの）
+  UNKNOWN // 確認できない（再取得に失敗した、まだ照合していない等）
+}
+
 // 物件データ本体。
 //
 // アプリのデータフローは
@@ -48,10 +58,15 @@ model Property {
   longitude Float?
 
   // --- データ出所（外部データ取込レイヤー用。STEP5） ---
-  source    String    @default("manual") // "manual" | "suumo" | "homes" | "athome" など。将来のソース追加はアダプタを増やすだけでよい
-  sourceId  String? // 外部サイト側の物件ID（重複取込防止のキー。手入力データはnull）
-  sourceUrl String? // 元データのURL（任意）
-  fetchedAt DateTime? // 外部取得日時（手入力データはnull）
+  source     String  @default("manual") // "manual" | "suumo" | "homes" | "athome" など。将来のソース追加はアダプタを増やすだけでよい
+  externalId String? // 外部サイト側の物件ID（重複取込防止の基本キー。手入力データはnull）
+  sourceUrl  String? // 元データのURL（任意）
+
+  // --- 掲載状態のライフサイクル管理 ---
+  listingStatus ListingStatus @default(ACTIVE)
+  firstSeenAt   DateTime      @default(now()) // 初めて確認した日時（新規取込時に設定、以後更新しない）
+  lastSeenAt    DateTime      @default(now()) // 最後に「掲載中」と確認できた日時
+  lastCheckedAt DateTime      @default(now()) // 最後に状態確認を試みた日時（確認できたか否かに関わらず更新）
 
   // 民泊適性スコア（0-100）。src/lib/score.ts の仮ロジックで算出し、取込時点の値をキャッシュしている。
   // 「参考スコア」であり、法的な民泊可否を確定するものではない。
@@ -66,8 +81,9 @@ model Property {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 同一ソース内での重複取込を防止（手入力データは sourceId が null のため対象外）
-  @@unique([source, sourceId])
+  // 同一ソース内での重複取込を防止する基本キー（手入力データは externalId が null のため対象外）。
+  // externalId が無い場合の重複判定は src/lib/ingestion/duplicateDetection.ts 参照（未実装の拡張ポイント）。
+  @@unique([source, externalId])
 }
 
 // 周辺観光地（民泊適性スコアの「観光地の近さ」要素、および詳細画面の表示に使用）

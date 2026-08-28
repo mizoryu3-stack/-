@@ -3,12 +3,13 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { calculateMinpakuScore } from "@/lib/score";
 import { getRegulationLevel } from "@/lib/regions";
-import { buildingTypeLabel, calcAge, formatYen } from "@/lib/format";
+import { buildingTypeLabel, calcAge, formatRelativeTime, formatYen } from "@/lib/format";
 import ScoreBadge from "@/components/ScoreBadge";
 import ScoreBreakdown from "@/components/ScoreBreakdown";
 import SimulationPanel from "@/components/SimulationPanel";
 import FavoriteButton from "@/components/FavoriteButton";
 import PropertyPhoto from "@/components/PropertyPhoto";
+import ListingStatusBadge from "@/components/ListingStatusBadge";
 
 export default async function PropertyDetailPage({
   params,
@@ -97,6 +98,11 @@ export default async function PropertyDetailPage({
               <ScoreBadge score={property.minpakuScore} size="lg" />
               <FavoriteButton propertyId={property.id} initialFavorited={!!property.favorite} />
             </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <ListingStatusBadge status={property.listingStatus} size="sm" />
+            <span>最終確認：{formatRelativeTime(property.lastCheckedAt)}</span>
           </div>
 
           <h2 className="mt-6 text-sm font-bold text-slate-700">物件情報</h2>

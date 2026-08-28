@@ -3,6 +3,7 @@ import { calculateMinpakuScore } from "@/lib/score";
 import { getRegulationLevel } from "@/lib/regions";
 import { fetchPublicDataForProperty } from "@/lib/publicData/enrichProperty";
 import { unavailablePublicDataResult } from "@/lib/publicData/types";
+import { findDuplicateCandidate } from "@/lib/ingestion/duplicateDetection";
 import type { RawListingInput } from "@/lib/ingestion/types";
 
 /**
@@ -17,8 +18,18 @@ import type { RawListingInput } from "@/lib/ingestion/types";
  * 必ずこの関数を通してDBに書き込む。これにより「データソースが増えても
  * スコアリング・検索画面には一切手を入れなくてよい」という構造を保つ。
  *
- * source + sourceId が一致する既存物件があれば更新（再取得時の重複防止）、
- * なければ新規作成する。sourceId が無い手入力データは常に新規作成する。
+ * 重複判定:
+ *  - externalId がある場合: source + externalId の一致で既存物件を判定する
+ *  - externalId が無い場合: findDuplicateCandidate() に委譲する（現時点では常に
+ *    「候補なし」を返すダミー実装。将来、住所・物件名等でのあいまい一致を追加できる）
+ *
+ * 掲載状態のライフサイクル:
+ *  - この関数が呼ばれる（＝その物件データが取得できた）たびに「確認できた」とみなし、
+ *    listingStatus を ACTIVE に、lastSeenAt/lastCheckedAt を現在時刻に更新する。
+ *    新規作成時のみ firstSeenAt も設定する。
+ *  - 「一定期間確認できない物件を ENDED/UNKNOWN にする」処理は、この関数の対象外
+ *    （外部データを再取得しない限りそのような物件は存在しないため）。
+ *    src/lib/ingestion/reconcileListingStatus.ts を参照。
  *
  * 公的データの取得はベストエフォートであり、失敗しても本関数自体は失敗しない
  * （fetchPublicDataForProperty は例外を投げず、常に何らかの結果を返す設計）。
@@ -71,6 +82,8 @@ export async function ingestProperty(raw: RawListingInput) {
   // 宿泊単価が未指定の場合、家賃から簡易推定（ユーザーが後で自由に編集する前提の初期値）
   const nightlyPrice = raw.simulation?.nightlyPrice ?? Math.round(raw.rent / 6 / 100) * 100;
 
+  const now = new Date();
+
   const baseData = {
     name: raw.name,
     prefecture: raw.prefecture,
@@ -93,10 +106,13 @@ export async function ingestProperty(raw: RawListingInput) {
     latitude: raw.latitude,
     longitude: raw.longitude,
     source: raw.source,
-    sourceId: raw.sourceId,
+    externalId: raw.externalId,
     sourceUrl: raw.sourceUrl,
-    fetchedAt: raw.fetchedAt,
     minpakuScore,
+    // この取込で「確認できた」ため常にACTIVEへ戻し、lastSeenAt/lastCheckedAtを更新する
+    listingStatus: "ACTIVE" as const,
+    lastSeenAt: now,
+    lastCheckedAt: now,
   };
 
   const simulationData = {
@@ -109,16 +125,16 @@ export async function ingestProperty(raw: RawListingInput) {
     otherCost: raw.simulation?.otherCost ?? 5_000,
   };
 
-  const existing = raw.sourceId
+  const existing = raw.externalId
     ? await prisma.property.findUnique({
-        where: { source_sourceId: { source: raw.source, sourceId: raw.sourceId } },
+        where: { source_externalId: { source: raw.source, externalId: raw.externalId } },
       })
-    : null;
+    : await findDuplicateCandidate(raw);
 
   const propertyId = await prisma.$transaction(async (tx) => {
     const property = existing
       ? await tx.property.update({ where: { id: existing.id }, data: baseData })
-      : await tx.property.create({ data: baseData });
+      : await tx.property.create({ data: { ...baseData, firstSeenAt: now } });
 
     await tx.simulationInput.upsert({
       where: { propertyId: property.id },
