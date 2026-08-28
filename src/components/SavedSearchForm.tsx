@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import type { SavedSearchFormState } from "@/app/saved-searches/actions";
 import { SUPPORTED_AREAS } from "@/lib/regions";
+import { minpakuConsultationStatusLabel, type MinpakuConsultationStatus } from "@/lib/format";
+import { VALID_MINPAKU_CONSULTATION_STATUSES } from "@/lib/ingestion/types";
 
 const initialState: SavedSearchFormState = { errors: [] };
 
@@ -15,6 +17,8 @@ export interface SavedSearchDefaultValues {
   maxAge?: number;
   stationWalkMax?: number;
   hasParking?: boolean;
+  minpakuConsultationStatus?: MinpakuConsultationStatus;
+  minMonthlyProfit?: number;
 }
 
 export default function SavedSearchForm({
@@ -122,6 +126,39 @@ export default function SavedSearchForm({
             defaultValue={defaultValues?.stationWalkMax}
             className="input-base"
           />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-600">民泊利用についての確認状況</span>
+          <select
+            name="minpakuConsultationStatus"
+            defaultValue={defaultValues?.minpakuConsultationStatus ?? ""}
+            className="select-input"
+          >
+            <option value="">指定なし</option>
+            {VALID_MINPAKU_CONSULTATION_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {minpakuConsultationStatusLabel[status]}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-slate-400">
+            物件提供元から得た確認状況での絞り込みです（法的な民泊可否の断定ではありません）。
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-600">最低期待月間利益（円）</span>
+          <input
+            type="number"
+            name="minMonthlyProfit"
+            step={1000}
+            defaultValue={defaultValues?.minMonthlyProfit}
+            className="input-base"
+          />
+          <span className="text-xs text-slate-400">
+            収益シミュレーションの初期値から算出した想定月間利益がこの金額以上の新着物件のみ通知します。
+          </span>
         </label>
       </div>
 

@@ -32,6 +32,8 @@ export default async function EditSavedSearchPage({
           maxAge: savedSearch.maxAge ?? undefined,
           stationWalkMax: savedSearch.stationWalkMax ?? undefined,
           hasParking: savedSearch.hasParking ?? undefined,
+          minpakuConsultationStatus: savedSearch.minpakuConsultationStatus ?? undefined,
+          minMonthlyProfit: savedSearch.minMonthlyProfit ?? undefined,
         }}
       />
     </div>

@@ -75,6 +75,165 @@ describe("matchNewProperty", () => {
     expect(matches).toHaveLength(1);
   });
 
+  // --- STEP4: 民泊相談状況条件 ---
+
+  it("民泊相談状況条件を指定しない場合、従来通り（状況によらず）マッチする", async () => {
+    await prisma.savedSearch.create({ data: { name: "指定なし", city: "呉市", enabled: true } });
+
+    const result = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-6",
+        minpakuConsultationStatus: "NOT_AVAILABLE",
+      }),
+    );
+    expect(result.matchCount).toBe(1);
+  });
+
+  it("民泊相談状況条件を指定すると、一致しない物件はマッチしない", async () => {
+    await prisma.savedSearch.create({
+      data: {
+        name: "確認済みのみ",
+        city: "呉市",
+        enabled: true,
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+      },
+    });
+
+    const unmatched = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-7",
+        minpakuConsultationStatus: "OWNER_CONFIRM_REQUIRED",
+      }),
+    );
+    expect(unmatched.matchCount).toBe(0);
+
+    const matched = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-8",
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+      }),
+    );
+    expect(matched.matchCount).toBe(1);
+  });
+
+  // --- STEP5: 最低期待月間利益条件 ---
+  // makeRawListing()の既定値（家賃60,000円等）で ingestProperty() が自動生成する
+  // SimulationInputから calculateSimulation() すると、想定月間利益は22,500円になる。
+
+  it("最低期待月間利益を指定しない場合、従来通り（利益によらず）マッチする", async () => {
+    await prisma.savedSearch.create({ data: { name: "指定なし", city: "呉市", enabled: true } });
+
+    const result = await ingestProperty(
+      makeRawListing({ city: "呉市", source: "test-src", externalId: "m-9" }),
+    );
+    expect(result.matchCount).toBe(1);
+  });
+
+  it("想定月間利益が最低期待利益以上の場合はマッチする", async () => {
+    await prisma.savedSearch.create({
+      data: { name: "利益2万円以上", city: "呉市", enabled: true, minMonthlyProfit: 20_000 },
+    });
+
+    const result = await ingestProperty(
+      makeRawListing({ city: "呉市", source: "test-src", externalId: "m-10" }),
+    );
+    expect(result.matchCount).toBe(1);
+  });
+
+  it("想定月間利益が最低期待利益未満の場合はマッチしない", async () => {
+    await prisma.savedSearch.create({
+      data: { name: "利益2.5万円以上", city: "呉市", enabled: true, minMonthlyProfit: 25_000 },
+    });
+
+    const result = await ingestProperty(
+      makeRawListing({ city: "呉市", source: "test-src", externalId: "m-11" }),
+    );
+    expect(result.matchCount).toBe(0);
+  });
+
+  it("民泊相談状況条件と利益条件の両方を満たした場合のみマッチする", async () => {
+    await prisma.savedSearch.create({
+      data: {
+        name: "確認済みかつ利益2万円以上",
+        city: "呉市",
+        enabled: true,
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+        minMonthlyProfit: 20_000,
+      },
+    });
+
+    // 民泊条件は満たすが利益条件を満たさない
+    // （nightlyPriceは家賃から簡易推定されるため、家賃を下げると想定利益もマイナス側に下がる）
+    const profitOnly = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-12",
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+        rent: 30_000,
+      }),
+    );
+    expect(profitOnly.matchCount).toBe(0);
+
+    // 利益条件は満たすが民泊条件を満たさない
+    const minpakuOnly = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-13",
+        minpakuConsultationStatus: "OWNER_CONFIRM_REQUIRED",
+      }),
+    );
+    expect(minpakuOnly.matchCount).toBe(0);
+
+    // 両方満たす
+    const both = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-14",
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+      }),
+    );
+    expect(both.matchCount).toBe(1);
+  });
+
+  it("民泊条件・利益条件を設定した保存検索条件でも、重複通知防止は維持される", async () => {
+    const search = await prisma.savedSearch.create({
+      data: {
+        name: "確認済みかつ利益2万円以上",
+        city: "呉市",
+        enabled: true,
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+        minMonthlyProfit: 20_000,
+      },
+    });
+
+    const result = await ingestProperty(
+      makeRawListing({
+        city: "呉市",
+        source: "test-src",
+        externalId: "m-15",
+        minpakuConsultationStatus: "OWNER_CONFIRMED_AVAILABLE",
+      }),
+    );
+    expect(result.matchCount).toBe(1); // ingestProperty()内部の自動マッチで1件生成される
+
+    const secondCallMatchCount = await matchNewProperty(result.propertyId); // 明示的に再度呼んでも増えない
+    expect(secondCallMatchCount).toBe(0);
+
+    const matches = await prisma.propertyMatch.findMany({
+      where: { propertyId: result.propertyId, savedSearchId: search.id },
+    });
+    expect(matches).toHaveLength(1);
+  });
+
   it("ingestProperty()自体が、新規作成かつ条件一致の場合にmatchCountを返す", async () => {
     await prisma.savedSearch.create({ data: { name: "呉市", city: "呉市", enabled: true } });
 

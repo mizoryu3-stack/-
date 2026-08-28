@@ -3,6 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import {
+  VALID_MINPAKU_CONSULTATION_STATUSES,
+  type MinpakuConsultationStatusInput,
+} from "@/lib/ingestion/types";
 
 export interface SavedSearchFormState {
   errors: string[];
@@ -25,6 +29,13 @@ function parseBuildingType(v: string | undefined): "HOUSE" | "APARTMENT" | undef
   return undefined;
 }
 
+function parseMinpakuConsultationStatus(v: string | undefined): MinpakuConsultationStatusInput | undefined {
+  if (v && (VALID_MINPAKU_CONSULTATION_STATUSES as string[]).includes(v)) {
+    return v as MinpakuConsultationStatusInput;
+  }
+  return undefined;
+}
+
 interface SavedSearchFieldData {
   name: string | undefined;
   city: string | undefined;
@@ -34,6 +45,8 @@ interface SavedSearchFieldData {
   maxAge: number | undefined;
   stationWalkMax: number | undefined;
   hasParking: boolean | undefined;
+  minpakuConsultationStatus: MinpakuConsultationStatusInput | undefined;
+  minMonthlyProfit: number | undefined;
 }
 
 function buildSavedSearchData(formData: FormData): SavedSearchFieldData {
@@ -46,6 +59,8 @@ function buildSavedSearchData(formData: FormData): SavedSearchFieldData {
     maxAge: num(formData, "maxAge"),
     stationWalkMax: num(formData, "stationWalkMax"),
     hasParking: formData.get("hasParking") === "on" ? true : undefined,
+    minpakuConsultationStatus: parseMinpakuConsultationStatus(str(formData, "minpakuConsultationStatus")),
+    minMonthlyProfit: num(formData, "minMonthlyProfit"),
   };
 }
 
@@ -93,6 +108,8 @@ export async function updateSavedSearch(
       maxAge: data.maxAge ?? null,
       stationWalkMax: data.stationWalkMax ?? null,
       hasParking: data.hasParking ?? null,
+      minpakuConsultationStatus: data.minpakuConsultationStatus ?? null,
+      minMonthlyProfit: data.minMonthlyProfit ?? null,
     },
   });
 

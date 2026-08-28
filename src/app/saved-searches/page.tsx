@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { buildingTypeLabel, formatYen } from "@/lib/format";
+import { buildingTypeLabel, formatYen, minpakuConsultationStatusLabel, type MinpakuConsultationStatus } from "@/lib/format";
 import { deleteSavedSearch, toggleSavedSearch } from "@/app/saved-searches/actions";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,8 @@ function summarize(search: {
   maxAge: number | null;
   stationWalkMax: number | null;
   hasParking: boolean | null;
+  minpakuConsultationStatus: MinpakuConsultationStatus | null;
+  minMonthlyProfit: number | null;
 }): string {
   const parts: string[] = [];
   if (search.city) parts.push(search.city);
@@ -22,6 +24,10 @@ function summarize(search: {
   if (search.maxAge !== null) parts.push(`築${search.maxAge}年以内`);
   if (search.stationWalkMax !== null) parts.push(`駅徒歩${search.stationWalkMax}分以内`);
   if (search.hasParking) parts.push("駐車場あり");
+  if (search.minpakuConsultationStatus) {
+    parts.push(`民泊: ${minpakuConsultationStatusLabel[search.minpakuConsultationStatus]}`);
+  }
+  if (search.minMonthlyProfit !== null) parts.push(`想定月間利益${formatYen(search.minMonthlyProfit)}以上`);
   return parts.length > 0 ? parts.join(" ・ ") : "条件なし（すべての新着物件が対象）";
 }
 

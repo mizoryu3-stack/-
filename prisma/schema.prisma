@@ -294,6 +294,9 @@ model Favorite {
 // フィールド名は検索画面(src/lib/types.ts の SearchFilters)の絞り込み条件と意図的に
 // 揃えてあり、src/lib/propertyQuery.ts の buildPropertyWhere() を検索画面・新着マッチング
 // 判定の両方から共通で呼び出せるようにしている（ロジックの二重管理を避けるため）。
+// ただし minpakuConsultationStatus・minMonthlyProfit（STEP4/5）は検索画面には無い、
+// 保存検索条件・新着マッチング専用の条件。minMonthlyProfitはbuildPropertyWhere()の対象外
+// （src/lib/notifications/matchSavedSearches.ts でアプリケーション側判定する）。
 //
 // 認証機能は未実装のため userId は固定値("default-user")を既定値として使う。
 // 将来ログイン機能を追加する際、この値を実際のユーザーIDに差し替えるだけで移行できる。
@@ -310,6 +313,16 @@ model SavedSearch {
   maxAge         Int? // 築年数上限
   stationWalkMax Int? // 駅徒歩上限
   hasParking     Boolean? // true=駐車場必須。null/falseは指定なし
+
+  // 民泊相談状況の条件（STEP4）。Property.minpakuConsultationStatusと同じenumをそのまま
+  // 再利用し、二重管理を避ける。buildingTypeと同じ「null=指定なし、値ありは完全一致」の
+  // パターン（4区分は互いに順序を持たない状態のため、閾値ではなく完全一致で絞り込む）。
+  minpakuConsultationStatus MinpakuConsultationStatus?
+
+  // 最低期待月間利益（円、STEP5）。nullは指定なし（利益条件によるフィルタなし）。
+  // DBのwhere句では判定しない。src/lib/notifications/matchSavedSearches.ts で、
+  // 既存のcalculateSimulation()・SimulationInputを使ってアプリケーション側で判定する。
+  minMonthlyProfit Int?
 
   matches PropertyMatch[]
 

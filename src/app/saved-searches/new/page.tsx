@@ -1,10 +1,17 @@
 import SavedSearchForm from "@/components/SavedSearchForm";
 import { createSavedSearch } from "@/app/saved-searches/actions";
+import { VALID_MINPAKU_CONSULTATION_STATUSES, type MinpakuConsultationStatusInput } from "@/lib/ingestion/types";
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function parseMinpakuConsultationStatus(value: string | undefined): MinpakuConsultationStatusInput | undefined {
+  return value && (VALID_MINPAKU_CONSULTATION_STATUSES as string[]).includes(value)
+    ? (value as MinpakuConsultationStatusInput)
+    : undefined;
 }
 
 export default async function NewSavedSearchPage({
@@ -35,6 +42,8 @@ export default async function NewSavedSearchPage({
           maxAge: first(params.maxAge) ? Number(first(params.maxAge)) : undefined,
           stationWalkMax: first(params.stationWalkMax) ? Number(first(params.stationWalkMax)) : undefined,
           hasParking: first(params.hasParking) === "true",
+          minpakuConsultationStatus: parseMinpakuConsultationStatus(first(params.minpakuConsultationStatus)),
+          minMonthlyProfit: first(params.minMonthlyProfit) ? Number(first(params.minMonthlyProfit)) : undefined,
         }}
       />
     </div>

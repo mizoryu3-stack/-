@@ -1,10 +1,15 @@
 import type { Prisma } from "@/generated/prisma/client";
+import type { MinpakuConsultationStatusInput } from "@/lib/ingestion/types";
 
 /**
  * 物件を絞り込むための条件。検索画面(SearchFilters)と保存検索条件(SavedSearch)の
  * 両方から使われる共通の形。search画面のUIに存在する項目のうち、SavedSearchが
  * 対応する範囲（region/maxRent/propertyType/minArea/maxBuildingAge/
  * maxStationWalkMinutes/parkingRequired に相当）をカバーする。
+ *
+ * minpakuConsultationStatus（STEP4）は検索画面には無い、保存検索条件専用の条件。
+ * Property.minpakuConsultationStatusと同じ型(MinpakuConsultationStatusInput)を
+ * そのまま使い、新しいenum/型を二重に作らない。
  */
 export interface PropertyQueryCriteria {
   city?: string;
@@ -17,6 +22,7 @@ export interface PropertyQueryCriteria {
   hasParking?: boolean;
   depositMax?: number;
   keyMoneyMax?: number;
+  minpakuConsultationStatus?: MinpakuConsultationStatusInput;
 }
 
 /**
@@ -57,6 +63,10 @@ export function buildPropertyWhere(criteria: PropertyQueryCriteria): Prisma.Prop
   }
   if (criteria.keyMoneyMax !== undefined && !Number.isNaN(criteria.keyMoneyMax)) {
     where.keyMoney = { lte: criteria.keyMoneyMax };
+  }
+  if (criteria.minpakuConsultationStatus) {
+    // 4区分は互いに順序を持たない状態のため、閾値ではなく完全一致で絞り込む
+    where.minpakuConsultationStatus = criteria.minpakuConsultationStatus;
   }
 
   return where;
