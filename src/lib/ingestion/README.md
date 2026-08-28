@@ -25,6 +25,11 @@
   設定すると、`ingestProperty()`が自動的に`src/lib/publicData/`経由で公的データを取得する。
   `listingStatus`/`firstSeenAt`/`lastSeenAt`/`lastCheckedAt`を指定すると掲載状態の
   自動更新ロジックを上書きできる（管理画面・CSVインポートからの手動指定用）。
+  `minpakuConsultationStatus`は「民泊利用について物件提供元から得た確認状況」
+  （オーナー確認済み・相談可能／要確認／不可／未確認）を表す別フィールドで、
+  `listingStatus`（掲載が生きているか）とは無関係。未指定の場合、新規作成時のみ
+  UNKNOWNになり、既存物件の更新では現在の値を維持する（再取込で意図せず
+  確認済み状態が消えないようにするため）。法的な民泊可否を断定するものではない。
 - `ingestProperty.ts` — `RawListingInput` を受け取り、重複判定・公的データの取得・
   民泊適性スコアの計算・掲載状態の更新を行った上でDBに書き込む唯一の入り口。
 - `duplicateDetection.ts` — 重複判定ロジック本体。`source + externalId` → `sourceUrl` →

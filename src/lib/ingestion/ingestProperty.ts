@@ -127,6 +127,10 @@ export async function ingestProperty(raw: RawListingInput): Promise<IngestResult
     initialCost: raw.initialCost,
     photoUrl: raw.photoUrl,
     memo: raw.memo,
+    // 未指定(undefined)の場合、Prismaはこのキーを「更新しない」ものとして扱うため、
+    // 既存物件を再取込した際に確認済みの状態を意図せず未確認へ戻すことはない。
+    // 新規作成時のみスキーマの既定値(UNKNOWN)が適用される。
+    minpakuConsultationStatus: raw.minpakuConsultationStatus,
     latitude: raw.latitude,
     longitude: raw.longitude,
     source: raw.source,

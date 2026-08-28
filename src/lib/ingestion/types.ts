@@ -4,6 +4,22 @@ export type ListingStatusInput = "ACTIVE" | "ENDED" | "UNKNOWN";
 export const VALID_LISTING_STATUSES: ListingStatusInput[] = ["ACTIVE", "ENDED", "UNKNOWN"];
 
 /**
+ * 民泊利用について物件提供元から得た確認状況。法的な民泊可否の断定ではなく、
+ * あくまで「オーナー・仲介元への確認状況」を表す参考情報（ListingStatusとは別概念）。
+ */
+export type MinpakuConsultationStatusInput =
+  | "OWNER_CONFIRMED_AVAILABLE"
+  | "OWNER_CONFIRM_REQUIRED"
+  | "NOT_AVAILABLE"
+  | "UNKNOWN";
+export const VALID_MINPAKU_CONSULTATION_STATUSES: MinpakuConsultationStatusInput[] = [
+  "OWNER_CONFIRMED_AVAILABLE",
+  "OWNER_CONFIRM_REQUIRED",
+  "NOT_AVAILABLE",
+  "UNKNOWN",
+];
+
+/**
  * 外部物件データを取り込むための正規化済みデータ形式。
  *
  * どのデータソース（手入力・将来のSUUMO/HOME'S/アットホーム等のアダプタ）から来た
@@ -52,6 +68,12 @@ export interface RawListingInput {
   firstSeenAt?: Date;
   lastSeenAt?: Date;
   lastCheckedAt?: Date;
+
+  /**
+   * 民泊利用について物件提供元から得た確認状況（省略時は新規作成時のみUNKNOWNになり、
+   * 既存物件の更新時は現在の値を維持する。listingStatusとは無関係の別フィールド）。
+   */
+  minpakuConsultationStatus?: MinpakuConsultationStatusInput;
 
   /** 収益シミュレーションの初期値（省略時はrentから簡易推定） */
   simulation?: {
@@ -129,6 +151,17 @@ export function validateRawListing(input: unknown): ValidationError[] {
     !VALID_LISTING_STATUSES.includes(r.listingStatus as ListingStatusInput)
   ) {
     errors.push({ field: "listingStatus", message: "ACTIVE / ENDED / UNKNOWN のいずれかである必要があります" });
+  }
+
+  if (
+    r.minpakuConsultationStatus !== undefined &&
+    !VALID_MINPAKU_CONSULTATION_STATUSES.includes(r.minpakuConsultationStatus as MinpakuConsultationStatusInput)
+  ) {
+    errors.push({
+      field: "minpakuConsultationStatus",
+      message:
+        "OWNER_CONFIRMED_AVAILABLE / OWNER_CONFIRM_REQUIRED / NOT_AVAILABLE / UNKNOWN のいずれかである必要があります",
+    });
   }
 
   return errors;

@@ -29,6 +29,7 @@ export const CANONICAL_FIELDS = [
   "listingStatus",
   "initialCost",
   "memo",
+  "minpakuConsultationStatus",
 ] as const;
 
 export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
@@ -59,6 +60,13 @@ const ALIASES: Record<CanonicalField, string[]> = {
   listingStatus: ["listingStatus", "掲載状態"],
   initialCost: ["initialCost", "初期費用"],
   memo: ["memo", "メモ"],
+  minpakuConsultationStatus: [
+    "minpakuConsultationStatus",
+    "民泊相談可否",
+    "民泊利用確認状況",
+    "オーナー確認状況",
+    "民泊確認状況",
+  ],
 };
 
 function normalizeHeader(header: string): string {

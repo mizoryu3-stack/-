@@ -4,12 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { calculateMinpakuScore } from "@/lib/score";
 import { getRegulationLevel } from "@/lib/regions";
 import { buildingTypeLabel, calcAge, formatRelativeTime, formatYen } from "@/lib/format";
+import { MINPAKU_CONSULTATION_DISCLAIMER } from "@/lib/regions";
 import ScoreBadge from "@/components/ScoreBadge";
 import ScoreBreakdown from "@/components/ScoreBreakdown";
 import SimulationPanel from "@/components/SimulationPanel";
 import FavoriteButton from "@/components/FavoriteButton";
 import PropertyPhoto from "@/components/PropertyPhoto";
 import ListingStatusBadge from "@/components/ListingStatusBadge";
+import MinpakuConsultationBadge from "@/components/MinpakuConsultationBadge";
 
 export default async function PropertyDetailPage({
   params,
@@ -103,6 +105,16 @@ export default async function PropertyDetailPage({
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <ListingStatusBadge status={property.listingStatus} size="sm" />
             <span>最終確認：{formatRelativeTime(property.lastCheckedAt)}</span>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-sm font-bold text-slate-700">民泊利用について</h2>
+            <div className="mt-2">
+              <MinpakuConsultationBadge status={property.minpakuConsultationStatus} />
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              {MINPAKU_CONSULTATION_DISCLAIMER}
+            </p>
           </div>
 
           <h2 className="mt-6 text-sm font-bold text-slate-700">物件情報</h2>

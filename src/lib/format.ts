@@ -21,6 +21,20 @@ export const listingStatusLabel: Record<"ACTIVE" | "ENDED" | "UNKNOWN", string> 
   UNKNOWN: "確認できません",
 };
 
+// 民泊利用について物件提供元から得た確認状況の表示ラベル。listingStatusとは別概念。
+export type MinpakuConsultationStatus =
+  | "OWNER_CONFIRMED_AVAILABLE"
+  | "OWNER_CONFIRM_REQUIRED"
+  | "NOT_AVAILABLE"
+  | "UNKNOWN";
+
+export const minpakuConsultationStatusLabel: Record<MinpakuConsultationStatus, string> = {
+  OWNER_CONFIRMED_AVAILABLE: "オーナー確認済み・相談可能",
+  OWNER_CONFIRM_REQUIRED: "オーナー確認が必要",
+  NOT_AVAILABLE: "民泊利用不可",
+  UNKNOWN: "未確認",
+};
+
 export function formatPercent(value: number, digits = 0): string {
   return `${value.toFixed(digits)}%`;
 }

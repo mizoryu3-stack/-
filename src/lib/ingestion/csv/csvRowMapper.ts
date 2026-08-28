@@ -1,5 +1,9 @@
 import { SUPPORTED_AREAS, SUPPORTED_PREFECTURE } from "@/lib/regions";
-import type { RawListingInput, ListingStatusInput } from "@/lib/ingestion/types";
+import type {
+  RawListingInput,
+  ListingStatusInput,
+  MinpakuConsultationStatusInput,
+} from "@/lib/ingestion/types";
 import type { CanonicalField } from "@/lib/ingestion/csv/columnAliases";
 
 export interface RowConversionResult {
@@ -27,6 +31,26 @@ const LISTING_STATUS_MAP: Record<string, ListingStatusInput> = {
   unknown: "UNKNOWN",
   確認できません: "UNKNOWN",
   不明: "UNKNOWN",
+};
+
+// 民泊利用について物件提供元から得た確認状況。ListingStatus（掲載が生きているか）とは
+// 無関係の別フィールドであり、法的な民泊可否を断定するものではない参考情報として扱う。
+const MINPAKU_CONSULTATION_STATUS_MAP: Record<string, MinpakuConsultationStatusInput> = {
+  owner_confirmed_available: "OWNER_CONFIRMED_AVAILABLE",
+  "オーナー確認済み・相談可能": "OWNER_CONFIRMED_AVAILABLE",
+  "オーナー確認済み": "OWNER_CONFIRMED_AVAILABLE",
+  "民泊相談可能": "OWNER_CONFIRMED_AVAILABLE",
+  "相談可能": "OWNER_CONFIRMED_AVAILABLE",
+  owner_confirm_required: "OWNER_CONFIRM_REQUIRED",
+  "オーナー確認が必要": "OWNER_CONFIRM_REQUIRED",
+  "要確認": "OWNER_CONFIRM_REQUIRED",
+  not_available: "NOT_AVAILABLE",
+  "民泊利用不可": "NOT_AVAILABLE",
+  "民泊不可": "NOT_AVAILABLE",
+  "不可": "NOT_AVAILABLE",
+  unknown: "UNKNOWN",
+  "未確認": "UNKNOWN",
+  "不明": "UNKNOWN",
 };
 
 const PARKING_TRUE_VALUES = new Set(["true", "1", "yes", "y", "あり", "有", "○", "o"]);
@@ -153,6 +177,19 @@ export function convertCsvRow(cells: Partial<Record<CanonicalField, string>>): R
     if (!listingStatus) errors.push("掲載状態が不正です（ACTIVE/ENDED/UNKNOWN のいずれかを指定してください）");
   }
 
+  const minpakuConsultationStatusRaw = get("minpakuConsultationStatus");
+  let minpakuConsultationStatus: MinpakuConsultationStatusInput | undefined;
+  if (minpakuConsultationStatusRaw) {
+    minpakuConsultationStatus =
+      MINPAKU_CONSULTATION_STATUS_MAP[minpakuConsultationStatusRaw.toLowerCase()] ??
+      MINPAKU_CONSULTATION_STATUS_MAP[minpakuConsultationStatusRaw];
+    if (!minpakuConsultationStatus) {
+      errors.push(
+        "民泊相談可否が不正です（オーナー確認済み・相談可能 / オーナー確認が必要 / 民泊不可 / 未確認 のいずれかを指定してください）",
+      );
+    }
+  }
+
   const sourceUrl = get("sourceUrl");
   if (sourceUrl && !isValidUrl(sourceUrl)) errors.push("元サイトURLが不正です");
 
@@ -213,6 +250,7 @@ export function convertCsvRow(cells: Partial<Record<CanonicalField, string>>): R
       externalId: get("externalId"),
       sourceUrl,
       listingStatus,
+      minpakuConsultationStatus,
     },
   };
 }

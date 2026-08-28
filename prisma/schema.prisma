@@ -25,6 +25,20 @@ enum ListingStatus {
   UNKNOWN // 確認できない（再取得に失敗した、まだ照合していない等）
 }
 
+// 民泊利用について、物件提供元（不動産会社等）から得られた「確認状況」。
+//
+// 重要: これはオーナー・仲介元からのヒアリング状況を表すだけであり、
+// 住宅宿泊事業法・旅館業許可・マンション管理規約・自治体条例等に基づく
+// 法的な民泊可否をアプリが断定するものではない（民泊適性スコア同様、参考情報）。
+//
+// ListingStatus（掲載自体が生きているか）とは完全に別概念であり、混同しないこと。
+enum MinpakuConsultationStatus {
+  OWNER_CONFIRMED_AVAILABLE // オーナー確認済み・民泊利用について相談可能
+  OWNER_CONFIRM_REQUIRED // 民泊利用についてオーナー確認が必要
+  NOT_AVAILABLE // 民泊利用不可
+  UNKNOWN // 民泊利用について未確認
+}
+
 // 物件データ本体。
 //
 // アプリのデータフローは
@@ -50,7 +64,11 @@ model Property {
   keyMoney       Int          @default(0) // 礼金（円）
   initialCost    Int? // 初期費用（円、任意。敷金礼金込みの想定初期投資額）
   photoUrl       String? // 物件写真URL（未設定の場合はプレースホルダー表示）
-  memo           String? // メモ
+  memo           String? // メモ（自由記述。民泊相談可否等の確認状況はここに書かず minpakuConsultationStatus を使う）
+
+  // 民泊利用について物件提供元から得た確認状況（法的な可否の断定ではない参考情報）。
+  // 詳細は MinpakuConsultationStatus enum のコメントを参照。
+  minpakuConsultationStatus MinpakuConsultationStatus @default(UNKNOWN)
 
   // 緯度経度（任意）。国土交通省 不動産情報ライブラリ等の位置情報APIを叩くために使用。
   // 現時点では自動ジオコーディングは実装しておらず、手入力データのみ手動で設定している。

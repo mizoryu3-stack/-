@@ -44,6 +44,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 420_000,
       memo: "平和記念公園まで徒歩圏内。インバウンド需要が特に見込めるエリア。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [
         { name: "原爆ドーム", distanceKm: 0.6 },
         { name: "平和記念公園", distanceKm: 0.8 },
@@ -76,6 +77,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 320_000,
       memo: "広島城・縮景園が近く、繁華街の紙屋町にもアクセスしやすい。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [
         { name: "広島城", distanceKm: 0.7 },
         { name: "縮景園", distanceKm: 1.2 },
@@ -106,6 +108,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 280_000,
       memo: "宮島航路の乗り場に近く、駐車場付きの戸建て。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [{ name: "広島港（宇品港）", distanceKm: 1.0 }],
       competitors: [{ platform: "Airbnb", distanceKm: 1.8 }],
     },
@@ -130,6 +133,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 300_000,
       memo: "新幹線停車駅の広島駅に近く、ビジネス・観光双方の需要が見込める。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [{ name: "広島城", distanceKm: 2.0 }],
       competitors: [
         { platform: "Airbnb", distanceKm: 0.4 },
@@ -159,6 +163,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 260_000,
       memo: "宮島への玄関口。フェリー乗り場まで徒歩圏内で外国人観光客に人気のエリア。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [
         { name: "宮島（嚴島神社）", distanceKm: 1.2 },
         { name: "宮島水族館", distanceKm: 2.5 },
@@ -189,6 +194,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 240_000,
       memo: "嚴島神社まで徒歩圏内の古民家。改装次第で高付加価値な宿泊体験を提供できる。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [
         { name: "嚴島神社", distanceKm: 0.5 },
         { name: "弥山（宮島ロープウエー）", distanceKm: 2.8 },
@@ -220,6 +226,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 220_000,
       memo: "宮島から少し離れているが家賃を抑えられ、駐車場もあり車移動の宿泊客に向く。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [{ name: "宮島（嚴島神社）", distanceKm: 5.5 }],
       competitors: [{ platform: "Airbnb", distanceKm: 2.0 }],
     },
@@ -244,6 +251,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 240_000,
       memo: "大和ミュージアムまで徒歩圏内で、呉駅からのアクセスも良好。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [
         { name: "大和ミュージアム", distanceKm: 0.8 },
         { name: "てつのくじら館", distanceKm: 0.9 },
@@ -271,6 +279,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 210_000,
       memo: "音戸の瀬戸を望む高台の戸建て。車前提の立地だが駐車場あり。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [{ name: "音戸の瀬戸", distanceKm: 1.0 }],
       competitors: [],
     },
@@ -295,6 +304,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 200_000,
       memo: "海上自衛隊呉基地・大和ミュージアムに近く、ビジネス需要も見込める。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [{ name: "大和ミュージアム", distanceKm: 1.4 }],
       competitors: [
         { platform: "Airbnb", distanceKm: 0.5 },
@@ -322,6 +332,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 230_000,
       memo: "酒蔵通りに近く、酒蔵見学ツアー客の宿泊需要が見込める。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [
         { name: "西条酒蔵通り", distanceKm: 0.4 },
         { name: "賀茂鶴酒造", distanceKm: 0.5 },
@@ -349,6 +360,7 @@ export function getManualListings(): RawListingInput[] {
       initialCost: 210_000,
       memo: "広島大学に近く、学会・大学関連の中長期滞在需要が見込める広めの戸建て。",
       source: "manual",
+      minpakuConsultationStatus: "UNKNOWN", // 実データではないため情報なし
       nearbyAttractions: [{ name: "龍王山", distanceKm: 2.2 }],
       competitors: [],
     },
