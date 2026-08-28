@@ -17,4 +17,5 @@ export async function resetDb() {
   await prisma.importBatch.deleteMany();
   await prisma.searchRunSource.deleteMany();
   await prisma.searchRun.deleteMany();
+  await prisma.dailySearchSchedule.deleteMany();
 }

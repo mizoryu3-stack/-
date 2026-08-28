@@ -56,6 +56,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   </span>
                 )}
               </Link>
+              <Link href="/settings" className="hover:text-slate-900">
+                ⚙️ 設定
+              </Link>
             </nav>
           </div>
         </header>

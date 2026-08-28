@@ -352,3 +352,28 @@ model PropertyMatch {
   // 同じ物件×同じ保存検索条件の組み合わせで重複通知が生成されないようにするための制約
   @@unique([propertyId, savedSearchId])
 }
+
+// 日次自動探索（/api/cron/daily-search）を「毎日何時に実行するか」の設定（STEP9）。
+//
+// SavedSearch（何を検索するか）とは責務を分離した別モデル。こちらは実行タイミングのみを
+// 表し、検索条件は一切持たない。STEP3で外部スケジューラを設定する際、この設定値を参照して
+// 「今が指定時刻かどうか」を判定する想定（src/lib/schedule/dailySearchSchedule.ts の
+// isScheduledTimeNow() 参照。呼び出し側の実装＝実際のCron接続自体はまだ行っていない）。
+//
+// 認証機能は未実装のため userId は固定値("default-user")を既定値として使う。@@unique により
+// 現状は実質「1ユーザー1設定」だが、将来ログイン機能を追加する際、実際のユーザーIDごとに
+// 複数行を持てる構造になっている（SavedSearch.userIdと同じ考え方）。
+model DailySearchSchedule {
+  id     Int    @id @default(autoincrement())
+  userId String @unique @default("default-user")
+
+  enabled Boolean @default(false) // 自動探索 ON/OFF
+  time    String  @default("08:00") // 探索時刻。"HH:mm"（24時間表記・ゼロ埋め2桁）形式の文字列
+
+  // IANAタイムゾーン名。現状UIでの変更は提供せずAsia/Tokyo固定だが、将来ユーザーごとに
+  // 異なるタイムゾーンを扱えるよう、値としては保持しておく。
+  timezone String @default("Asia/Tokyo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
