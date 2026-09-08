@@ -14,6 +14,15 @@ function App() {
       <header className="app-header">
         <h1>💪 筋トレ記録</h1>
         <p>種目・重量・回数を記録して、成長を振り返ろう</p>
+        {store.loaded && (
+          <p className="storage-status">
+            {store.durable ? (
+              <>✓ 記録はこのページ自体に保存されます (端末・ブラウザが変わっても消えません)</>
+            ) : (
+              <>この端末のブラウザにのみ保存されています</>
+            )}
+          </p>
+        )}
       </header>
       <nav className="app-nav">
         <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>

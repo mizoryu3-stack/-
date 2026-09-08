@@ -25,6 +25,12 @@
   font-size: 0.85rem;
 }
 
+.storage-status {
+  margin-top: 4px !important;
+  font-size: 0.75rem !important;
+  color: var(--text-muted) !important;
+}
+
 .app-nav {
   display: flex;
   gap: 4px;

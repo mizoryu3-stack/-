@@ -255,6 +255,42 @@ export function evaluateBodyFocus(
   return `「${label}」の日として記録されました。`;
 }
 
+/** 1種目について、今回の記録内容だけを見て具体的なアドバイスを1つ生成する。 */
+function buildExerciseTip(
+  agg: ExerciseAggregate,
+  comparison: ExerciseComparison,
+): string {
+  const { exerciseName, topWeightKg, topWeightReps, setCount } = agg;
+  const nextWeight = topWeightKg > 0 ? topWeightKg + 2.5 : topWeightKg;
+
+  if (comparison.isStagnant) {
+    return `${exerciseName}は${topWeightKg}kg×${topWeightReps}回が2回以上続いています。次回は${nextWeight}kgに上げるか、回数を1〜2回増やしてみましょう。`;
+  }
+  if (topWeightReps >= 15) {
+    return `${exerciseName}は${topWeightReps}回こなせています。次回は${nextWeight}kgに上げるか、セット数を+1(${
+      setCount + 1
+    }セット)にしてみると良さそうです。`;
+  }
+  if (topWeightReps >= 12 && setCount <= 2) {
+    return `${exerciseName}はまだ余裕がありそうです。次回はもう1セット(${
+      setCount + 1
+    }セット目)を追加できるか試してみましょう。`;
+  }
+  if (comparison.volumeChangePct !== null && comparison.volumeChangePct < -10) {
+    return `${exerciseName}のボリュームが前回より低下しています。フォームや休息時間を見直してみましょう。`;
+  }
+  if (comparison.volumeChangePct !== null && comparison.volumeChangePct >= 15) {
+    return `${exerciseName}は前回よりしっかり伸びています。この調子で続けましょう。`;
+  }
+  if (
+    comparison.previousTopWeightKg !== null &&
+    topWeightKg > comparison.previousTopWeightKg
+  ) {
+    return `${exerciseName}は前回より重量が伸びています。順調です。`;
+  }
+  return `${exerciseName}は${topWeightKg}kg×${topWeightReps}回×${setCount}セット、安定してこなせています。次回は${nextWeight}kgに挑戦してみるのも良さそうです。`;
+}
+
 /** 保存されたセッションと過去の記録から、総評・比較・改善提案を組み立てる。 */
 export function buildSessionReview(
   session: WorkoutSession,
@@ -346,30 +382,12 @@ export function buildSessionReview(
     )}%)しました。体調や睡眠・栄養を見直すタイミングかもしれません。`;
   }
 
-  // --- 改善提案の生成 ---
-  const suggestions: string[] = [];
-
-  for (const c of comparisons) {
-    if (c.isStagnant) {
-      suggestions.push(
-        `${c.exerciseName}は同じ重量・回数が続いています。次回は+2.5kg、または回数を1〜2回増やしてみましょう。`,
-      );
-    } else if (c.volumeChangePct !== null && c.volumeChangePct < -10) {
-      suggestions.push(
-        `${c.exerciseName}のボリュームが前回より低下しています。フォームや休息時間を見直してみましょう。`,
-      );
-    }
-  }
-
-  const highRepExercises = currentAggregates.filter(
-    (a) => a.topWeightReps >= 20,
+  // --- 改善提案の生成: 種目ごとに、今回の内容だけを見た具体的なアドバイスを必ず1つずつ出す ---
+  const suggestions: string[] = currentAggregates.map((agg, i) =>
+    buildExerciseTip(agg, comparisons[i]),
   );
-  for (const a of highRepExercises) {
-    suggestions.push(
-      `${a.exerciseName}は回数が多め(${a.topWeightReps}回)です。筋力向上が目的なら、重量を上げて8〜12回で追い込むのも効果的です。`,
-    );
-  }
 
+  // 参考情報として、直近1週間で手薄な部位があれば最後に付け加える (こちらは今回単体の評価ではなく補足)
   const trainedRecently = new Set(
     allSessions
       .filter((s) => s.date >= addDays(session.date, -7) && s.date <= session.date)
@@ -379,9 +397,9 @@ export function buildSessionReview(
   const untouched = allCategories.filter((c) => !trainedRecently.has(c));
   if (untouched.length > 0 && untouched.length < allCategories.length) {
     suggestions.push(
-      `直近7日間で「${untouched.join(
+      `(参考) 直近1週間では「${untouched.join(
         "・",
-      )}」の部位が未実施です。バランスを考えるなら次回以降に取り入れてみましょう。`,
+      )}」の部位が手薄です。気になるようなら次回以降に取り入れてみましょう。`,
     );
   }
 
