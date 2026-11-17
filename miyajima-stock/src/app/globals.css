@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 和モダン × ミニマル × 高級ホテル */
+:root {
+  --background: #f4f3ef;
+  --foreground: #2d2f2e;
+  --card: #fdfcf9;
+  --card-foreground: #2d2f2e;
+  --muted: #ecebe5;
+  --muted-foreground: #6b6e6a;
+  --border: #e3e1d9;
+  --input: #dcdad1;
+  --primary: #1f4d3a;
+  --primary-foreground: #fbfaf5;
+  --primary-soft: #e3ece6;
+  --accent: #b08d57;
+  --accent-foreground: #ffffff;
+  --accent-soft: #f4ecdd;
+  --destructive: #b3412f;
+  --destructive-foreground: #ffffff;
+  --ring: #1f4d3a;
+  --chart-1: #1e7a52; /* 購入済み */
+  --chart-2: #b8862b; /* 未購入予定 */
+  --chart-grid: #e6e4dc;
+  --radius: 1rem;
+}
+
+.dark {
+  --background: #121513;
+  --foreground: #e9e8e2;
+  --card: #1a1e1c;
+  --card-foreground: #e9e8e2;
+  --muted: #232825;
+  --muted-foreground: #9da39e;
+  --border: #2c322f;
+  --input: #353c38;
+  --primary: #5fa983;
+  --primary-foreground: #0f1a14;
+  --primary-soft: #1f3329;
+  --accent: #c9a56a;
+  --accent-foreground: #1b160c;
+  --accent-soft: #2f281b;
+  --destructive: #e0725f;
+  --destructive-foreground: #1a0d0a;
+  --ring: #5fa983;
+  --chart-1: #2e9466;
+  --chart-2: #b0841f;
+  --chart-grid: #2a2f2c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-noto-sans-jp), "Hiragino Sans", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif-jp), "Hiragino Mincho ProN", serif;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-feature-settings: "palt";
+  overscroll-behavior-y: none;
+}
+
+/* iPhone のホームインジケーター領域 */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+/* iOS で入力時に自動ズームしないよう 16px 以上 */
+input, select, textarea { font-size: 16px; }
+@media (min-width: 768px) {
+  input, select, textarea { font-size: 14px; }
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.25s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up { animation: none; }
+}

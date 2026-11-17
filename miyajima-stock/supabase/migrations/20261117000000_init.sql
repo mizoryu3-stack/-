@@ -1,0 +1,354 @@
+-- =====================================================================
+-- MIYAJIMA STOCK 初期スキーマ
+-- 金額はすべて日本円の整数（bigint）で保存します。
+-- すべてのテーブルは Row Level Security で「本人のデータのみ」に制限します。
+-- =====================================================================
+
+create extension if not exists pgcrypto;
+
+-- ---------------------------------------------------------------------
+-- 購入ステータス
+--   considering(検討中) / planned(未購入)               → 未購入予定として集計
+--   ordered(注文済み) / shipping(配送中) /
+--   purchased(購入済み) / installed(設置完了)            → 購入確定として集計
+--   cancelled(購入取り消し)                              → 集計対象外
+-- ---------------------------------------------------------------------
+do $$ begin
+  create type public.item_status as enum (
+    'considering', 'planned', 'ordered', 'shipping', 'purchased', 'installed', 'cancelled'
+  );
+exception when duplicate_object then null; end $$;
+
+-- 共通: updated_at 自動更新
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- ユーザー設定（予算など）
+-- ---------------------------------------------------------------------
+create table if not exists public.user_settings (
+  user_id      uuid primary key references auth.users(id) on delete cascade,
+  total_budget bigint not null default 3800000 check (total_budget >= 0),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------
+-- カテゴリー（タグ）
+-- ---------------------------------------------------------------------
+create table if not exists public.categories (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name        text not null check (char_length(name) between 1 and 40),
+  color       text not null default '#1f4d3a',
+  icon        text not null default 'tag',
+  sort_order  integer not null default 0,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (user_id, name)
+);
+create index if not exists categories_user_idx on public.categories(user_id, sort_order);
+
+-- ---------------------------------------------------------------------
+-- 商品
+-- ---------------------------------------------------------------------
+create table if not exists public.items (
+  id                 uuid primary key default gen_random_uuid(),
+  user_id            uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name               text not null check (char_length(name) between 1 and 200),
+  original_name      text,
+  item_type          text,
+  brand              text,
+  model_number       text,
+  color              text,
+  size               text,
+  description        text,
+  store              text,             -- 販売サイト（Amazon / 楽天市場 / ニトリ など）
+  url                text,
+  planned_unit_price bigint check (planned_unit_price is null or planned_unit_price >= 0),
+  actual_unit_price  bigint check (actual_unit_price is null or actual_unit_price >= 0),
+  quantity           integer not null default 1 check (quantity >= 1),
+  shipping_fee       bigint not null default 0 check (shipping_fee >= 0),
+  status             public.item_status not null default 'planned',
+  purchase_date      date,
+  purchase_store     text,             -- 実際の購入先
+  notes              text,
+  image_path         text,             -- Storage: 商品画像
+  screenshot_path    text,             -- Storage: 元スクリーンショット
+  screenshot_hash    text,             -- 重複検出用 SHA-256
+  ai_extracted       jsonb,            -- AIが抽出した元データ（参考保存）
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists items_user_created_idx on public.items(user_id, created_at desc);
+create index if not exists items_user_status_idx  on public.items(user_id, status);
+create index if not exists items_user_hash_idx    on public.items(user_id, screenshot_hash);
+
+-- 商品 × カテゴリー（多対多）。カテゴリーを削除しても商品は残ります。
+create table if not exists public.item_categories (
+  item_id     uuid not null references public.items(id) on delete cascade,
+  category_id uuid not null references public.categories(id) on delete cascade,
+  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (item_id, category_id)
+);
+create index if not exists item_categories_category_idx on public.item_categories(category_id);
+
+-- ---------------------------------------------------------------------
+-- 購入履歴・価格変更履歴（トリガーで自動記録）
+-- ---------------------------------------------------------------------
+create table if not exists public.item_events (
+  id          uuid primary key default gen_random_uuid(),
+  item_id     uuid not null references public.items(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  event_type  text not null,  -- created / status_changed / planned_price_changed / actual_price_changed / quantity_changed
+  from_value  text,
+  to_value    text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists item_events_item_idx on public.item_events(item_id, created_at desc);
+
+-- ---------------------------------------------------------------------
+-- その他費用（内装工事費・電気工事費・消防設備費・契約費など）
+-- ---------------------------------------------------------------------
+create table if not exists public.other_expenses (
+  id                uuid primary key default gen_random_uuid(),
+  user_id           uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name              text not null check (char_length(name) between 1 and 200),
+  expense_type      text not null default 'その他',
+  estimated_amount  bigint check (estimated_amount is null or estimated_amount >= 0),
+  actual_amount     bigint check (actual_amount is null or actual_amount >= 0),
+  is_confirmed      boolean not null default false, -- true = 実績確定 / false = 見積
+  expense_date      date,
+  vendor            text,
+  notes             text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create index if not exists other_expenses_user_idx on public.other_expenses(user_id, created_at desc);
+
+-- ---------------------------------------------------------------------
+-- 領収書・レシート（商品またはその他費用に紐付け）
+-- ---------------------------------------------------------------------
+create table if not exists public.receipts (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  item_id       uuid references public.items(id) on delete cascade,
+  expense_id    uuid references public.other_expenses(id) on delete cascade,
+  file_path     text not null,
+  file_name     text,
+  purchase_date date,
+  store         text,
+  amount        bigint check (amount is null or amount >= 0),
+  notes         text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists receipts_item_idx on public.receipts(item_id);
+create index if not exists receipts_expense_idx on public.receipts(expense_id);
+
+-- ---------------------------------------------------------------------
+-- updated_at トリガー
+-- ---------------------------------------------------------------------
+drop trigger if exists trg_items_updated on public.items;
+create trigger trg_items_updated before update on public.items
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_categories_updated on public.categories;
+create trigger trg_categories_updated before update on public.categories
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_expenses_updated on public.other_expenses;
+create trigger trg_expenses_updated before update on public.other_expenses
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_settings_updated on public.user_settings;
+create trigger trg_settings_updated before update on public.user_settings
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 履歴の自動記録
+-- ---------------------------------------------------------------------
+create or replace function public.log_item_events()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into public.item_events(item_id, user_id, event_type, to_value)
+    values (new.id, new.user_id, 'created', new.status::text);
+    return new;
+  end if;
+  if new.status is distinct from old.status then
+    insert into public.item_events(item_id, user_id, event_type, from_value, to_value)
+    values (new.id, new.user_id, 'status_changed', old.status::text, new.status::text);
+  end if;
+  if new.planned_unit_price is distinct from old.planned_unit_price then
+    insert into public.item_events(item_id, user_id, event_type, from_value, to_value)
+    values (new.id, new.user_id, 'planned_price_changed', old.planned_unit_price::text, new.planned_unit_price::text);
+  end if;
+  if new.actual_unit_price is distinct from old.actual_unit_price then
+    insert into public.item_events(item_id, user_id, event_type, from_value, to_value)
+    values (new.id, new.user_id, 'actual_price_changed', old.actual_unit_price::text, new.actual_unit_price::text);
+  end if;
+  if new.quantity is distinct from old.quantity then
+    insert into public.item_events(item_id, user_id, event_type, from_value, to_value)
+    values (new.id, new.user_id, 'quantity_changed', old.quantity::text, new.quantity::text);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_items_events on public.items;
+create trigger trg_items_events after insert or update on public.items
+  for each row execute function public.log_item_events();
+
+-- ---------------------------------------------------------------------
+-- 紐付けの整合性チェック: 他人の商品/カテゴリーとは紐付けできない
+-- ---------------------------------------------------------------------
+create or replace function public.check_item_category_owner()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.items i where i.id = new.item_id and i.user_id = new.user_id)
+     or not exists (select 1 from public.categories c where c.id = new.category_id and c.user_id = new.user_id) then
+    raise exception 'item/category owner mismatch';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_item_categories_owner on public.item_categories;
+create trigger trg_item_categories_owner before insert or update on public.item_categories
+  for each row execute function public.check_item_category_owner();
+
+create or replace function public.check_receipt_owner()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.item_id is not null and not exists (
+    select 1 from public.items i where i.id = new.item_id and i.user_id = new.user_id) then
+    raise exception 'receipt item owner mismatch';
+  end if;
+  if new.expense_id is not null and not exists (
+    select 1 from public.other_expenses e where e.id = new.expense_id and e.user_id = new.user_id) then
+    raise exception 'receipt expense owner mismatch';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_receipts_owner on public.receipts;
+create trigger trg_receipts_owner before insert or update on public.receipts
+  for each row execute function public.check_receipt_owner();
+
+-- ---------------------------------------------------------------------
+-- 新規ユーザー作成時: 初期設定と初期カテゴリーを作成
+-- ---------------------------------------------------------------------
+create or replace function public.seed_user_defaults(p_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.user_settings(user_id) values (p_user) on conflict do nothing;
+  insert into public.categories(user_id, name, color, icon, sort_order) values
+    (p_user, '和室',     '#1f4d3a', 'sofa',          10),
+    (p_user, '洋室',     '#3d6b57', 'bed-double',    20),
+    (p_user, 'リビング', '#6b8f71', 'armchair',      30),
+    (p_user, 'キッチン', '#b08d57', 'cooking-pot',   40),
+    (p_user, '浴室',     '#4a7c8c', 'bath',          50),
+    (p_user, 'トイレ',   '#7a9aa8', 'droplets',      60),
+    (p_user, '玄関',     '#8c6e4a', 'door-open',     70),
+    (p_user, '廊下',     '#a3a08c', 'footprints',    80),
+    (p_user, '家電',     '#3b4a5c', 'plug',          90),
+    (p_user, '消防設備', '#a8423a', 'flame',        100),
+    (p_user, '清掃用品', '#5c8a8a', 'spray-can',    110),
+    (p_user, '消耗品',   '#9c7a3c', 'package',      120),
+    (p_user, 'その他',   '#6b6b6b', 'tag',          130)
+  on conflict (user_id, name) do nothing;
+end $$;
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.seed_user_defaults(new.id);
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- 本人が初期データを再作成したい場合（設定画面から呼び出し）
+create or replace function public.ensure_my_defaults()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated'; end if;
+  insert into public.user_settings(user_id) values (auth.uid()) on conflict do nothing;
+  if not exists (select 1 from public.categories where user_id = auth.uid()) then
+    perform public.seed_user_defaults(auth.uid());
+  end if;
+end $$;
+revoke all on function public.seed_user_defaults(uuid) from public, anon, authenticated;
+revoke all on function public.ensure_my_defaults() from public, anon;
+grant execute on function public.ensure_my_defaults() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Row Level Security
+-- ---------------------------------------------------------------------
+alter table public.user_settings   enable row level security;
+alter table public.categories      enable row level security;
+alter table public.items           enable row level security;
+alter table public.item_categories enable row level security;
+alter table public.item_events     enable row level security;
+alter table public.other_expenses  enable row level security;
+alter table public.receipts        enable row level security;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['user_settings','categories','items','item_categories','other_expenses','receipts'] loop
+    execute format('drop policy if exists "own_select" on public.%I', t);
+    execute format('drop policy if exists "own_insert" on public.%I', t);
+    execute format('drop policy if exists "own_update" on public.%I', t);
+    execute format('drop policy if exists "own_delete" on public.%I', t);
+    execute format('create policy "own_select" on public.%I for select to authenticated using (user_id = (select auth.uid()))', t);
+    execute format('create policy "own_insert" on public.%I for insert to authenticated with check (user_id = (select auth.uid()))', t);
+    execute format('create policy "own_update" on public.%I for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
+    execute format('create policy "own_delete" on public.%I for delete to authenticated using (user_id = (select auth.uid()))', t);
+  end loop;
+end $$;
+
+-- 履歴は閲覧のみ（書き込みはトリガー経由）
+drop policy if exists "own_select" on public.item_events;
+create policy "own_select" on public.item_events for select to authenticated
+  using (user_id = (select auth.uid()));
+
+-- ---------------------------------------------------------------------
+-- Storage: 非公開バケット（パスの先頭フォルダ = ユーザーID）
+-- ---------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('item-files', 'item-files', false, 15728640,
+        array['image/jpeg','image/png','image/webp','image/heic','image/heif','image/gif','application/pdf'])
+on conflict (id) do update set public = false;
+
+drop policy if exists "item_files_select_own" on storage.objects;
+drop policy if exists "item_files_insert_own" on storage.objects;
+drop policy if exists "item_files_update_own" on storage.objects;
+drop policy if exists "item_files_delete_own" on storage.objects;
+
+create policy "item_files_select_own" on storage.objects for select to authenticated
+  using (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "item_files_insert_own" on storage.objects for insert to authenticated
+  with check (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "item_files_update_own" on storage.objects for update to authenticated
+  using (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "item_files_delete_own" on storage.objects for delete to authenticated
+  using (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- ---------------------------------------------------------------------
+-- Realtime（iPhone と Mac の画面を自動同期）
+-- ---------------------------------------------------------------------
+do $$
+declare t text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach t in array array['items','categories','item_categories','other_expenses','receipts','user_settings'] loop
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I', t);
+      end if;
+    end loop;
+  end if;
+end $$;
