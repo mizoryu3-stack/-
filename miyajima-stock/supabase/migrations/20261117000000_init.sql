@@ -1,10 +1,17 @@
 -- =====================================================================
--- MIYAJIMA STOCK 初期スキーマ
--- 金額はすべて日本円の整数（bigint）で保存します。
--- すべてのテーブルは Row Level Security で「本人のデータのみ」に制限します。
+-- MIYAJIMA STOCK 初期スキーマ（新規データベースへの初回適用用）
+--
+-- ・Supabase の SQL Editor に全文を貼り付けて 1 回実行すれば初期設定が完了します。
+-- ・全体を 1 つのトランザクション（begin 〜 commit）で実行するため、途中で
+--   エラーが発生した場合はすべて取り消され、不完全な状態は残りません。
+-- ・金額はすべて日本円の整数（bigint）で保存します。
+-- ・すべてのテーブルは Row Level Security で「本人のデータのみ」に制限します。
+-- ・SECURITY DEFINER 関数は search_path を空に固定し、参照はすべてスキーマ名付きです。
 -- =====================================================================
 
-create extension if not exists pgcrypto;
+begin;
+
+-- gen_random_uuid() は PostgreSQL 標準関数のため拡張機能は不要です。
 
 -- ---------------------------------------------------------------------
 -- 購入ステータス
@@ -19,27 +26,19 @@ do $$ begin
   );
 exception when duplicate_object then null; end $$;
 
--- 共通: updated_at 自動更新
-create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end $$;
+-- =====================================================================
+-- テーブル
+-- =====================================================================
 
--- ---------------------------------------------------------------------
 -- ユーザー設定（予算など）
--- ---------------------------------------------------------------------
 create table if not exists public.user_settings (
-  user_id      uuid primary key references auth.users(id) on delete cascade,
+  user_id      uuid primary key default auth.uid() references auth.users(id) on delete cascade,
   total_budget bigint not null default 3800000 check (total_budget >= 0),
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
 
--- ---------------------------------------------------------------------
 -- カテゴリー（タグ）
--- ---------------------------------------------------------------------
 create table if not exists public.categories (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -53,9 +52,7 @@ create table if not exists public.categories (
 );
 create index if not exists categories_user_idx on public.categories(user_id, sort_order);
 
--- ---------------------------------------------------------------------
 -- 商品
--- ---------------------------------------------------------------------
 create table if not exists public.items (
   id                 uuid primary key default gen_random_uuid(),
   user_id            uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -97,24 +94,24 @@ create table if not exists public.item_categories (
   primary key (item_id, category_id)
 );
 create index if not exists item_categories_category_idx on public.item_categories(category_id);
+create index if not exists item_categories_user_idx on public.item_categories(user_id);
 
--- ---------------------------------------------------------------------
--- 購入履歴・価格変更履歴（トリガーで自動記録）
--- ---------------------------------------------------------------------
+-- 購入履歴・価格変更履歴（トリガー経由でのみ追加。利用者は閲覧のみ）
 create table if not exists public.item_events (
   id          uuid primary key default gen_random_uuid(),
   item_id     uuid not null references public.items(id) on delete cascade,
   user_id     uuid not null references auth.users(id) on delete cascade,
-  event_type  text not null,  -- created / status_changed / planned_price_changed / actual_price_changed / quantity_changed
+  event_type  text not null check (event_type in (
+    'created', 'status_changed', 'planned_price_changed', 'actual_price_changed', 'quantity_changed'
+  )),
   from_value  text,
   to_value    text,
   created_at  timestamptz not null default now()
 );
 create index if not exists item_events_item_idx on public.item_events(item_id, created_at desc);
+create index if not exists item_events_user_idx on public.item_events(user_id);
 
--- ---------------------------------------------------------------------
 -- その他費用（内装工事費・電気工事費・消防設備費・契約費など）
--- ---------------------------------------------------------------------
 create table if not exists public.other_expenses (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -131,46 +128,61 @@ create table if not exists public.other_expenses (
 );
 create index if not exists other_expenses_user_idx on public.other_expenses(user_id, created_at desc);
 
--- ---------------------------------------------------------------------
--- 領収書・レシート（商品またはその他費用に紐付け）
--- ---------------------------------------------------------------------
+-- 領収書・レシート（商品 または その他費用 の「どちらか一方だけ」に紐付け）
 create table if not exists public.receipts (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null default auth.uid() references auth.users(id) on delete cascade,
   item_id       uuid references public.items(id) on delete cascade,
   expense_id    uuid references public.other_expenses(id) on delete cascade,
-  file_path     text not null,
+  file_path     text not null check (char_length(file_path) between 1 and 500),
   file_name     text,
   purchase_date date,
   store         text,
   amount        bigint check (amount is null or amount >= 0),
   notes         text,
-  created_at    timestamptz not null default now()
+  created_at    timestamptz not null default now(),
+  constraint receipts_exactly_one_parent check (num_nonnulls(item_id, expense_id) = 1)
 );
 create index if not exists receipts_item_idx on public.receipts(item_id);
 create index if not exists receipts_expense_idx on public.receipts(expense_id);
+create index if not exists receipts_user_idx on public.receipts(user_id);
 
--- ---------------------------------------------------------------------
--- updated_at トリガー
--- ---------------------------------------------------------------------
-drop trigger if exists trg_items_updated on public.items;
-create trigger trg_items_updated before update on public.items
-  for each row execute function public.set_updated_at();
-drop trigger if exists trg_categories_updated on public.categories;
-create trigger trg_categories_updated before update on public.categories
-  for each row execute function public.set_updated_at();
-drop trigger if exists trg_expenses_updated on public.other_expenses;
-create trigger trg_expenses_updated before update on public.other_expenses
-  for each row execute function public.set_updated_at();
-drop trigger if exists trg_settings_updated on public.user_settings;
-create trigger trg_settings_updated before update on public.user_settings
-  for each row execute function public.set_updated_at();
+-- =====================================================================
+-- 関数（すべて search_path を空に固定）
+-- =====================================================================
 
--- ---------------------------------------------------------------------
--- 履歴の自動記録
--- ---------------------------------------------------------------------
+-- updated_at 自動更新（呼び出し元の権限で実行）
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.updated_at = pg_catalog.now();
+  return new;
+end $$;
+
+-- user_id の変更を禁止（作成後に別ユーザーへ付け替えられないようにする）
+create or replace function public.prevent_user_id_change()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.user_id is distinct from old.user_id then
+    raise exception 'user_id は変更できません'
+      using errcode = '42501';
+  end if;
+  return new;
+end $$;
+
+-- 購入履歴の自動記録（item_events への書き込みはこの関数経由のみ）
 create or replace function public.log_item_events()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
 begin
   if tg_op = 'INSERT' then
     insert into public.item_events(item_id, user_id, event_type, to_value)
@@ -196,48 +208,47 @@ begin
   return new;
 end $$;
 
-drop trigger if exists trg_items_events on public.items;
-create trigger trg_items_events after insert or update on public.items
-  for each row execute function public.log_item_events();
-
--- ---------------------------------------------------------------------
--- 紐付けの整合性チェック: 他人の商品/カテゴリーとは紐付けできない
--- ---------------------------------------------------------------------
+-- 商品とカテゴリーの紐付けは、両方とも同じ利用者のものに限る
 create or replace function public.check_item_category_owner()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
 begin
   if not exists (select 1 from public.items i where i.id = new.item_id and i.user_id = new.user_id)
      or not exists (select 1 from public.categories c where c.id = new.category_id and c.user_id = new.user_id) then
-    raise exception 'item/category owner mismatch';
+    raise exception 'item/category owner mismatch' using errcode = '42501';
   end if;
   return new;
 end $$;
-drop trigger if exists trg_item_categories_owner on public.item_categories;
-create trigger trg_item_categories_owner before insert or update on public.item_categories
-  for each row execute function public.check_item_category_owner();
 
+-- 領収書の紐付け先は同じ利用者の商品・費用に限る
 create or replace function public.check_receipt_owner()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
 begin
   if new.item_id is not null and not exists (
     select 1 from public.items i where i.id = new.item_id and i.user_id = new.user_id) then
-    raise exception 'receipt item owner mismatch';
+    raise exception 'receipt item owner mismatch' using errcode = '42501';
   end if;
   if new.expense_id is not null and not exists (
     select 1 from public.other_expenses e where e.id = new.expense_id and e.user_id = new.user_id) then
-    raise exception 'receipt expense owner mismatch';
+    raise exception 'receipt expense owner mismatch' using errcode = '42501';
   end if;
   return new;
 end $$;
-drop trigger if exists trg_receipts_owner on public.receipts;
-create trigger trg_receipts_owner before insert or update on public.receipts
-  for each row execute function public.check_receipt_owner();
 
--- ---------------------------------------------------------------------
--- 新規ユーザー作成時: 初期設定と初期カテゴリーを作成
--- ---------------------------------------------------------------------
+-- 初期設定と初期カテゴリーの作成（内部用。利用者は直接呼び出せない）
 create or replace function public.seed_user_defaults(p_user uuid)
-returns void language plpgsql security definer set search_path = public as $$
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
 begin
   insert into public.user_settings(user_id) values (p_user) on conflict do nothing;
   insert into public.categories(user_id, name, color, icon, sort_order) values
@@ -257,34 +268,120 @@ begin
   on conflict (user_id, name) do nothing;
 end $$;
 
+-- 新規ユーザー作成時（auth.users への追加時）に初期データを作成
 create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
 begin
   perform public.seed_user_defaults(new.id);
   return new;
 end $$;
 
+-- ログイン中の本人の初期データを（未作成の場合のみ）作成。アプリから RPC で呼び出す
+create or replace function public.ensure_my_defaults()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'not authenticated' using errcode = '42501';
+  end if;
+  insert into public.user_settings(user_id) values (v_uid) on conflict do nothing;
+  if not exists (select 1 from public.categories where user_id = v_uid) then
+    perform public.seed_user_defaults(v_uid);
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 関数の実行権限
+--   Supabase は public スキーマの新しい関数に anon / authenticated の実行権限を
+--   自動付与するため、PUBLIC だけでなく両ロールからも明示的に取り消します。
+--   アプリから呼び出すのは ensure_my_defaults() のみ（authenticated に限定）。
+--   トリガー関数はトリガーとしてのみ動作し、実行権限は不要です。
+-- ---------------------------------------------------------------------
+revoke all on function public.set_updated_at()            from public, anon, authenticated;
+revoke all on function public.prevent_user_id_change()    from public, anon, authenticated;
+revoke all on function public.log_item_events()           from public, anon, authenticated;
+revoke all on function public.check_item_category_owner() from public, anon, authenticated;
+revoke all on function public.check_receipt_owner()       from public, anon, authenticated;
+revoke all on function public.seed_user_defaults(uuid)    from public, anon, authenticated;
+revoke all on function public.handle_new_user()           from public, anon, authenticated;
+revoke all on function public.ensure_my_defaults()        from public, anon, authenticated;
+grant execute on function public.ensure_my_defaults() to authenticated;
+
+-- =====================================================================
+-- トリガー
+-- =====================================================================
+
+-- updated_at
+drop trigger if exists trg_items_updated on public.items;
+create trigger trg_items_updated before update on public.items
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_categories_updated on public.categories;
+create trigger trg_categories_updated before update on public.categories
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_expenses_updated on public.other_expenses;
+create trigger trg_expenses_updated before update on public.other_expenses
+  for each row execute function public.set_updated_at();
+drop trigger if exists trg_settings_updated on public.user_settings;
+create trigger trg_settings_updated before update on public.user_settings
+  for each row execute function public.set_updated_at();
+
+-- user_id の変更禁止（user_id を持つ全テーブル）
+do $$
+declare t text;
+begin
+  foreach t in array array['user_settings','categories','items','item_categories','item_events','other_expenses','receipts'] loop
+    execute format('drop trigger if exists trg_%s_user_id_immutable on public.%I', t, t);
+    execute format(
+      'create trigger trg_%s_user_id_immutable before update of user_id on public.%I
+         for each row execute function public.prevent_user_id_change()', t, t);
+  end loop;
+end $$;
+
+-- 購入履歴の自動記録
+drop trigger if exists trg_items_events on public.items;
+create trigger trg_items_events after insert or update on public.items
+  for each row execute function public.log_item_events();
+
+-- 紐付けの所有者チェック
+drop trigger if exists trg_item_categories_owner on public.item_categories;
+create trigger trg_item_categories_owner before insert or update on public.item_categories
+  for each row execute function public.check_item_category_owner();
+drop trigger if exists trg_receipts_owner on public.receipts;
+create trigger trg_receipts_owner before insert or update on public.receipts
+  for each row execute function public.check_receipt_owner();
+
+-- 新規ユーザー作成時の初期データ
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 本人が初期データを再作成したい場合（設定画面から呼び出し）
-create or replace function public.ensure_my_defaults()
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  if auth.uid() is null then raise exception 'not authenticated'; end if;
-  insert into public.user_settings(user_id) values (auth.uid()) on conflict do nothing;
-  if not exists (select 1 from public.categories where user_id = auth.uid()) then
-    perform public.seed_user_defaults(auth.uid());
-  end if;
-end $$;
-revoke all on function public.seed_user_defaults(uuid) from public, anon, authenticated;
-revoke all on function public.ensure_my_defaults() from public, anon;
-grant execute on function public.ensure_my_defaults() to authenticated;
+-- =====================================================================
+-- テーブル権限と Row Level Security
+--   ・anon（未ログイン）にはテーブル権限を一切与えません。
+--   ・authenticated には必要な操作のみ許可し、RLS で本人の行に限定します。
+--   ・item_events は閲覧のみ（INSERT / UPDATE / DELETE 権限なし）。
+-- =====================================================================
+revoke all on table
+  public.user_settings, public.categories, public.items, public.item_categories,
+  public.item_events, public.other_expenses, public.receipts
+  from public, anon, authenticated;
 
--- ---------------------------------------------------------------------
--- Row Level Security
--- ---------------------------------------------------------------------
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table
+  public.user_settings, public.categories, public.items, public.item_categories,
+  public.other_expenses, public.receipts
+  to authenticated;
+grant select on table public.item_events to authenticated;
+
 alter table public.user_settings   enable row level security;
 alter table public.categories      enable row level security;
 alter table public.items           enable row level security;
@@ -308,18 +405,24 @@ begin
   end loop;
 end $$;
 
--- 履歴は閲覧のみ（書き込みはトリガー経由）
+-- 履歴は閲覧のみ（書き込み用のポリシーは作成しない）
 drop policy if exists "own_select" on public.item_events;
 create policy "own_select" on public.item_events for select to authenticated
   using (user_id = (select auth.uid()));
 
--- ---------------------------------------------------------------------
+-- =====================================================================
 -- Storage: 非公開バケット（パスの先頭フォルダ = ユーザーID）
--- ---------------------------------------------------------------------
+--   ・閲覧は署名付き URL（本人のみ発行可能）
+--   ・アップロード・削除は本人のフォルダのみ
+--   ・更新（上書き・移動）はアプリで使用しないため許可しない
+-- =====================================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('item-files', 'item-files', false, 15728640,
         array['image/jpeg','image/png','image/webp','image/heic','image/heif','image/gif','application/pdf'])
-on conflict (id) do update set public = false;
+on conflict (id) do update
+  set public = false,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "item_files_select_own" on storage.objects;
 drop policy if exists "item_files_insert_own" on storage.objects;
@@ -330,21 +433,21 @@ create policy "item_files_select_own" on storage.objects for select to authentic
   using (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
 create policy "item_files_insert_own" on storage.objects for insert to authenticated
   with check (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
-create policy "item_files_update_own" on storage.objects for update to authenticated
-  using (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
 create policy "item_files_delete_own" on storage.objects for delete to authenticated
   using (bucket_id = 'item-files' and (storage.foldername(name))[1] = (select auth.uid())::text);
 
--- ---------------------------------------------------------------------
+-- =====================================================================
 -- Realtime（iPhone と Mac の画面を自動同期）
--- ---------------------------------------------------------------------
+--   変更通知は RLS に従い、本人の行の変更のみ受信します。
+--   item_events は商品の変更に合わせてアプリ側で再取得するため対象外です。
+-- =====================================================================
 do $$
 declare t text;
 begin
-  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+  if exists (select 1 from pg_catalog.pg_publication where pubname = 'supabase_realtime') then
     foreach t in array array['items','categories','item_categories','other_expenses','receipts','user_settings'] loop
       if not exists (
-        select 1 from pg_publication_tables
+        select 1 from pg_catalog.pg_publication_tables
         where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
       ) then
         execute format('alter publication supabase_realtime add table public.%I', t);
@@ -352,3 +455,5 @@ begin
     end loop;
   end if;
 end $$;
+
+commit;

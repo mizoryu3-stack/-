@@ -68,8 +68,10 @@ miyajima-stock/
 ### 1. Supabase プロジェクトを作成
 
 1. <https://supabase.com/> でアカウントを作成し、「New project」でプロジェクトを作成します（Region は **Northeast Asia (Tokyo)** がおすすめ）。無料プランで利用できます。
-2. 作成後、左メニュー **SQL Editor** を開き、`supabase/migrations/20261117000000_init.sql` の内容をすべて貼り付けて **Run** します。
+2. 作成後、左メニュー **SQL Editor** を開き、`supabase/migrations/20261117000000_init.sql` の内容を **全文まとめて** 貼り付けて **Run** を1回押します。
    - テーブル、Row Level Security、非公開 Storage バケット `item-files`、初期カテゴリー作成の仕組みがまとめて作成されます。
+   - 全体が1つのトランザクション（`begin` 〜 `commit`）なので、途中でエラーになった場合はすべて取り消され、中途半端な状態は残りません。
+   - 「destructive operation」の警告が出た場合は、`drop ... if exists` に反応したものなので、そのまま実行して問題ありません。
    - Supabase CLI を使う場合は `npx supabase link --project-ref <プロジェクトID>` → `npx supabase db push` でも適用できます。
 3. **Authentication → URL Configuration** で以下を設定します。
    - Site URL: 本番の URL（例 `https://miyajima-stock.vercel.app`）
